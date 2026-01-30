@@ -24,21 +24,46 @@ export class World {
   }
 
   public generate() {
-    // Generate a flat floor of bedrock
-    for (let x = -5; x < 5; x++) {
-      for (let z = -5; z < 5; z++) {
+    const size = 32; // -32 to 32, roughly 64x64
+    const height = 10;
+    
+    // Generate terrain
+    for (let x = -size; x < size; x++) {
+      for (let z = -size; z < size; z++) {
         this.setBlock(x, 0, z, BlockType.BEDROCK);
-        for (let y = 1; y < 3; y++) {
+        
+        // Simple Perlin-ish noise or random height
+        const h = Math.floor(Math.abs(Math.sin(x * 0.1) * Math.cos(z * 0.1) * 5) + 3);
+        
+        for (let y = 1; y < h; y++) {
              this.setBlock(x, y, z, BlockType.DIRT);
         }
-        this.setBlock(x, 3, z, BlockType.GRASS);
+        this.setBlock(x, h, z, BlockType.GRASS);
+
+        // Random features
+        if (Math.random() > 0.98) {
+          // Tree
+          this.generateTree(x, h + 1, z);
+        }
       }
     }
-    
-    // Some features
-    this.setBlock(0, 4, 0, BlockType.WOOD);
-    this.setBlock(0, 5, 0, BlockType.WOOD);
-    this.setBlock(0, 6, 0, BlockType.WOOD); // Tree trunk
+  }
+
+  private generateTree(x: number, y: number, z: number) {
+    for (let i = 0; i < 4; i++) {
+      this.setBlock(x, y + i, z, BlockType.WOOD);
+    }
+    // Leaves
+    for (let lx = x - 2; lx <= x + 2; lx++) {
+      for (let lz = z - 2; lz <= z + 2; lz++) {
+        for (let ly = y + 2; ly <= y + 4; ly++) {
+          if (lx === x && lz === z && ly < y + 4) continue; // Don't replace trunk
+          if (Math.abs(lx - x) + Math.abs(lz - z) + Math.abs(ly - (y + 2)) < 4) {
+             this.setBlock(lx, ly, lz, BlockType.GRASS); // Using Grass as leaves for now, or add LEAVES type
+          }
+        }
+      }
+    }
   }
 
   public getBlock(x: number, y: number, z: number): BlockType {

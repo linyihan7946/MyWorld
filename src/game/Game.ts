@@ -3,6 +3,7 @@ import { SceneManager } from '../core/SceneManager';
 import { InputManager } from '../core/InputManager';
 import { World } from './World';
 import { PlayerController } from './PlayerController';
+import { Steve, Villager } from './Characters';
 import * as THREE from 'three';
 
 export class Game {
@@ -11,6 +12,7 @@ export class Game {
   private inputManager: InputManager;
   private world: World;
   private player: PlayerController;
+  private entities: any[] = [];
 
   constructor(container: HTMLElement) {
     this.sceneManager = new SceneManager(container);
@@ -32,9 +34,32 @@ export class Game {
     dirLight.position.set(10, 20, 10);
     this.sceneManager.scene.add(dirLight);
 
+    // Add Characters
+    const steve = new Steve();
+    steve.position.set(5, 10, 5); // Start high to fall naturally
+    this.sceneManager.scene.add(steve.mesh);
+    this.entities.push(steve);
+
+    const villager = new Villager();
+    villager.position.set(-5, 10, -5);
+    this.sceneManager.scene.add(villager.mesh);
+    this.entities.push(villager);
+
     this.loop.add((dt) => {
       this.player.update(dt);
       
+      // Update entities (simple gravity for them too?)
+      for (const entity of this.entities) {
+          entity.update(dt);
+          // Simple gravity hack for entities since they don't have full physics controller yet
+          if (entity.position.y > 5) { // Assuming ground is around 4-5
+              entity.velocity.y -= 10 * dt;
+          } else {
+              entity.velocity.y = 0;
+              entity.position.y = 5; // Hardcoded ground level for now
+          }
+      }
+
       // Update camera rotation based on mouse
       const mouse = this.inputManager.getMovement();
       this.sceneManager.camera.rotation.y -= mouse.x * 0.002;
