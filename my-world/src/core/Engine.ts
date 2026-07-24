@@ -355,10 +355,12 @@ export class Engine {
 
   private container: HTMLElement
   private seed: number
+  private superflat: boolean
 
-  constructor(container: HTMLElement, seed?: number) {
+  constructor(container: HTMLElement, seed?: number, superflat = false) {
     this.container = container
     this.seed = seed ?? Math.floor(Math.random() * 2147483647)
+    this.superflat = superflat
     this.eventBus = new EventBus()
     this.gameLoop = new GameLoop()
     this.inputManager = new InputManager()
@@ -403,7 +405,7 @@ export class Engine {
     this.inputManager.attach(this.renderer.domElement)
     this.setupInputHandlers()
 
-    this.worldGenerator = new WorldGenerator(this.seed)
+    this.worldGenerator = new WorldGenerator(this.seed, this.superflat)
     this.chunkManager = new ChunkManager(this.scene, this.chunkMesher, this.worldGenerator)
     this.cameraManager.setCollisionRaycast((origin, direction, distance) => {
       return this.chunkManager.raycast(origin, direction, distance)?.distance ?? null
@@ -1087,7 +1089,9 @@ export class Engine {
     const tryCandidate = (x: number, z: number, requirePlains: boolean) => {
       const height = this.worldGenerator.getHeight(x, z)
       const biome = this.worldGenerator.getBiome(x, z)
-      return height > 63 && biome !== 'ocean' && biome !== 'beach' && (!requirePlains || biome === 'plains')
+      // 超平坦模式高度为 3, 正常模式需要 > 63
+      const minHeight = this.superflat ? 2 : 63
+      return height > minHeight && biome !== 'ocean' && biome !== 'beach' && (!requirePlains || biome === 'plains')
     }
 
     for (const requirePlains of [true, false]) {

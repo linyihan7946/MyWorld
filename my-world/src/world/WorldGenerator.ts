@@ -15,8 +15,10 @@ export class WorldGenerator {
   private treeNoise: ReturnType<typeof createNoise2D>
   private caveNoise: ReturnType<typeof createNoise3D>
   private lushNoise: ReturnType<typeof createNoise3D>
+  private superflat: boolean
 
-  constructor(seed: number) {
+  constructor(seed: number, superflat = false) {
+    this.superflat = superflat
     // Create seeded random
     const rng = this.seededRandom(seed)
     const rng2 = this.seededRandom(seed + 1)
@@ -49,6 +51,11 @@ export class WorldGenerator {
   generateChunk(chunk: Chunk): void {
     const worldX = chunk.chunkX * CHUNK_SIZE
     const worldZ = chunk.chunkZ * CHUNK_SIZE
+
+    if (this.superflat) {
+      this.generateFlatChunk(chunk)
+      return
+    }
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -197,9 +204,44 @@ export class WorldGenerator {
   }
 
   /**
+   * 超平坦世界区块生成
+   * 层: 基岩 → 泥土×2 → 草方块, 高度=3
+   */
+  private generateFlatChunk(chunk: Chunk): void {
+    const worldX = chunk.chunkX * CHUNK_SIZE
+    const worldZ = chunk.chunkZ * CHUNK_SIZE
+
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const wx = worldX + x
+        const wz = worldZ + z
+
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          let blockType = BlockType.AIR
+          if (y === 0) blockType = BlockType.BEDROCK
+          else if (y <= 2) blockType = BlockType.DIRT
+          else if (y === 3) blockType = BlockType.GRASS_BLOCK
+
+          chunk.setBlock(x, y, z, blockType)
+        }
+
+        // 少量随机树木装饰
+        if (x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2) {
+          const treeVal = this.treeNoise(wx * 0.5, wz * 0.5)
+          if (treeVal > 0.92) {
+            this.placeTree(chunk, x, 4, z)
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * 获取地形高度
    */
   getHeight(worldX: number, worldZ: number): number {
+    if (this.superflat) return 3
+
     // Multi-octave noise for terrain
     const base = this.noise2D(worldX * 0.005, worldZ * 0.005) * 40
     const detail = this.noise2D2(worldX * 0.02, worldZ * 0.02) * 10

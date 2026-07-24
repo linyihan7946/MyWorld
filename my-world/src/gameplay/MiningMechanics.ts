@@ -25,12 +25,73 @@ const TOOL_HARVEST_LEVEL: Record<string, number> = {
 // ===================== 方块所需工具类型 =====================
 
 const HAND_MINEABLE = new Set<BlockType>([
+  // 泥土/沙子/软质方块
   BlockType.DIRT, BlockType.GRASS_BLOCK, BlockType.SAND, BlockType.GRAVEL,
   BlockType.CLAY, BlockType.SOUL_SAND, BlockType.SOUL_SOIL,
   BlockType.MYCELIUM, BlockType.CRIMSON_NYLIUM, BlockType.WARPED_NYLIUM,
   BlockType.SNOW, BlockType.SNOW_BLOCK, BlockType.ICE, BlockType.PACKED_ICE,
   BlockType.BLUE_ICE, BlockType.FROSTED_ICE,
-  BlockType.MAGMA_BLOCK, // 可手挖但受伤
+  BlockType.MAGMA_BLOCK,
+  // === 所有木制品（可空手挖，斧头加速）===
+  BlockType.OAK_LOG, BlockType.SPRUCE_LOG, BlockType.BIRCH_LOG,
+  BlockType.JUNGLE_LOG, BlockType.ACACIA_LOG, BlockType.DARK_OAK_LOG,
+  BlockType.OAK_PLANKS, BlockType.SPRUCE_PLANKS, BlockType.BIRCH_PLANKS,
+  BlockType.JUNGLE_PLANKS, BlockType.ACACIA_PLANKS, BlockType.DARK_OAK_PLANKS,
+  BlockType.CRAFTING_TABLE, BlockType.BOOKSHELF, BlockType.CHEST, BlockType.BARREL,
+  BlockType.LECTERN, BlockType.COMPOSTER, BlockType.LOOM,
+  BlockType.CARTOGRAPHY_TABLE, BlockType.FLETCHING_TABLE, BlockType.SMITHING_TABLE,
+  BlockType.OAK_DOOR, BlockType.SPRUCE_DOOR, BlockType.BIRCH_DOOR,
+  BlockType.JUNGLE_DOOR, BlockType.ACACIA_DOOR, BlockType.DARK_OAK_DOOR,
+  BlockType.OAK_TRAPDOOR, BlockType.SPRUCE_TRAPDOOR, BlockType.BIRCH_TRAPDOOR,
+  BlockType.JUNGLE_TRAPDOOR, BlockType.ACACIA_TRAPDOOR, BlockType.DARK_OAK_TRAPDOOR,
+  BlockType.OAK_FENCE, BlockType.SPRUCE_FENCE, BlockType.BIRCH_FENCE,
+  BlockType.JUNGLE_FENCE, BlockType.ACACIA_FENCE, BlockType.DARK_OAK_FENCE,
+  BlockType.OAK_STAIRS, BlockType.SPRUCE_STAIRS, BlockType.BIRCH_STAIRS,
+  BlockType.OAK_SLAB, BlockType.SPRUCE_SLAB, BlockType.BIRCH_SLAB,
+  BlockType.OAK_BUTTON, BlockType.STONE_BUTTON,
+  BlockType.OAK_PRESSURE_PLATE, BlockType.STONE_PRESSURE_PLATE,
+  BlockType.LADDER, BlockType.BAMBOO_BLOCK, BlockType.HAY_BALE,
+  BlockType.BONE_BLOCK,
+  // === 基础方块/装饰（空手可挖）===
+  BlockType.TNT, BlockType.GLASS, BlockType.GLOWSTONE,
+  BlockType.WHITE_STAINED_GLASS, BlockType.ORANGE_STAINED_GLASS, BlockType.MAGENTA_STAINED_GLASS,
+  BlockType.LIGHT_BLUE_STAINED_GLASS, BlockType.YELLOW_STAINED_GLASS, BlockType.LIME_STAINED_GLASS,
+  BlockType.PINK_STAINED_GLASS, BlockType.GRAY_STAINED_GLASS, BlockType.LIGHT_GRAY_STAINED_GLASS,
+  BlockType.CYAN_STAINED_GLASS, BlockType.PURPLE_STAINED_GLASS, BlockType.BLUE_STAINED_GLASS,
+  BlockType.BROWN_STAINED_GLASS, BlockType.GREEN_STAINED_GLASS, BlockType.RED_STAINED_GLASS,
+  BlockType.BLACK_STAINED_GLASS,
+  // 羊毛
+  BlockType.WHITE_WOOL, BlockType.ORANGE_WOOL, BlockType.MAGENTA_WOOL,
+  BlockType.LIGHT_BLUE_WOOL, BlockType.YELLOW_WOOL, BlockType.LIME_WOOL,
+  BlockType.PINK_WOOL, BlockType.GRAY_WOOL, BlockType.LIGHT_GRAY_WOOL,
+  BlockType.CYAN_WOOL, BlockType.PURPLE_WOOL, BlockType.BLUE_WOOL,
+  BlockType.BROWN_WOOL, BlockType.GREEN_WOOL, BlockType.RED_WOOL, BlockType.BLACK_WOOL,
+  // 床
+  BlockType.WHITE_BED, BlockType.ORANGE_BED, BlockType.MAGENTA_BED,
+  BlockType.LIGHT_BLUE_BED, BlockType.YELLOW_BED, BlockType.LIME_BED,
+  BlockType.PINK_BED, BlockType.GRAY_BED, BlockType.LIGHT_GRAY_BED,
+  BlockType.CYAN_BED, BlockType.PURPLE_BED, BlockType.BLUE_BED,
+  BlockType.BROWN_BED, BlockType.GREEN_BED, BlockType.RED_BED, BlockType.BLACK_BED,
+  // 叶子
+  BlockType.OAK_LEAVES, BlockType.SPRUCE_LEAVES, BlockType.BIRCH_LEAVES,
+  BlockType.JUNGLE_LEAVES, BlockType.ACACIA_LEAVES, BlockType.DARK_OAK_LEAVES,
+  // 植物/瓜果
+  BlockType.CACTUS, BlockType.SUGAR_CANE, BlockType.PUMPKIN, BlockType.MELON,
+  BlockType.DRIED_KELP_BLOCK,
+  BlockType.MUSHROOM_STEM, BlockType.RED_MUSHROOM_BLOCK, BlockType.BROWN_MUSHROOM_BLOCK,
+  // 火把/灯/简单装饰
+  BlockType.TORCH, BlockType.SOUL_TORCH, BlockType.LANTERN, BlockType.SOUL_LANTERN,
+  BlockType.CHAIN,
+  // 铁轨
+  BlockType.RAIL, BlockType.POWERED_RAIL, BlockType.DETECTOR_RAIL, BlockType.ACTIVATOR_RAIL,
+  // 红石元件 (简单空手拆)
+  BlockType.REDSTONE_DUST, BlockType.REPEATER, BlockType.COMPARATOR,
+  // 门 (铁门仍需工具)
+  BlockType.IRON_DOOR, BlockType.IRON_TRAPDOOR,
+  // 压力板
+  BlockType.LIGHT_WEIGHTED_PRESSURE_PLATE, BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE,
+  // Netherrack
+  BlockType.NETHERRACK,
 ])
 
 const SHOVEL_BLOCKS = new Set<BlockType>([

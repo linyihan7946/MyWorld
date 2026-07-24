@@ -30,6 +30,13 @@
           />
           <p class="seed-hint">支持数字或文字种子，相同种子生成相同世界</p>
         </div>
+        <div class="world-options">
+          <label class="option-check">
+            <input type="checkbox" v-model="superflatMode" />
+            <span>超平坦世界</span>
+          </label>
+          <p class="seed-hint">基岩 + 2层泥土 + 草方块，完全平坦的地形</p>
+        </div>
         <button @click="startGame">开始游戏</button>
         <div class="controls-info">
           <h3>操作说明</h3>
@@ -59,6 +66,7 @@ let engine: Engine | null = null
 const started = ref(false)
 const showDebug = ref(true)
 const seedInput = ref('')
+const superflatMode = ref(false)
 
 const playerStore = usePlayerStore()
 const uiStore = useUIStore()
@@ -92,7 +100,7 @@ const startGame = async () => {
   try {
     started.value = true
     const seed = parseSeed(seedInput.value)
-    engine = new Engine(gameCanvas.value, seed)
+    engine = new Engine(gameCanvas.value, seed, superflatMode.value)
     await engine.init()
 
     // Listen to engine events
@@ -271,6 +279,30 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   color: #888 !important;
   margin-top: 6px !important;
   margin-bottom: 10px !important;
+}
+
+.world-options {
+  margin: 12px auto;
+  max-width: 400px;
+  text-align: left;
+}
+
+.option-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  color: #ddd;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.option-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #4a8a4a;
+  cursor: pointer;
 }
 
 .start-content button {
