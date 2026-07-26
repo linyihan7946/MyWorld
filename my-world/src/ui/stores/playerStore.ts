@@ -22,9 +22,12 @@ export const usePlayerStore = defineStore('player', () => {
   const breakCanHarvest = ref(true)
   const breakToolName = ref<string | null>(null)
 
+  // Save callback - set by Engine when initialized
+  const saveCallback = ref<(() => boolean) | null>(null)
+
   return {
     position, health, maxHealth, oxygen, maxOxygen, selectedSlot, character,
     gameMode, isFlying, isUnderwater, worldSeed, isDead, deathCount, timeOfDay,
-    breakProgress, breakCanHarvest, breakToolName,
+    breakProgress, breakCanHarvest, breakToolName, saveCallback,
   }
 })

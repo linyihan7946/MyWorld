@@ -76,10 +76,11 @@
           <button
             v-for="category in creativeCategories"
             :key="category.id"
+            type="button"
             class="creative-tab"
             :class="{ active: creativeCategory === category.id }"
-            @click="creativeCategory = category.id"
-          >{{ category.name }}</button>
+            @click.stop="switchCreativeCategory(category.id)"
+          >{{ category.name }} ({{ categoryCounts[category.id] || 0 }})</button>
         </div>
         <div class="creative-label">{{ activeCreativeCategoryName }}（{{ creativeItems.length }}）</div>
         <div class="creative-grid">
@@ -88,7 +89,7 @@
             :key="entry.item"
             class="creative-slot"
             :title="entry.name"
-            @click="selectCreativeItem(entry)"
+            @click.stop="selectCreativeItem(entry)"
           >
             <span class="item" :style="getInventoryIconStyle(entry.item)">
               <span v-if="entry.blockType === undefined">{{ getSlotShortName(entry.item) }}</span>
@@ -210,7 +211,23 @@ const allCreativeItems = computed<CreativeEntry[]>(() => {
   }
   return entries
 })
-const creativeItems = computed(() => allCreativeItems.value.filter(entry => entry.category === creativeCategory.value))
+function switchCreativeCategory(id: CreativeCategory) {
+  creativeCategory.value = id
+}
+
+// 各分类物品数量（用于标签显示）
+const categoryCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const entry of allCreativeItems.value) {
+    counts[entry.category] = (counts[entry.category] || 0) + 1
+  }
+  return counts
+})
+
+const creativeItems = computed(() => {
+  const filtered = allCreativeItems.value.filter(entry => entry.category === creativeCategory.value)
+  return filtered
+})
 const activeCreativeCategoryName = computed(() => creativeCategories.find(category => category.id === creativeCategory.value)?.name ?? '')
 
 function selectCreativeItem(entry: CreativeEntry): void {
@@ -636,11 +653,12 @@ onUnmounted(() => {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 100;
+  pointer-events: auto;
 }
 
 .inventory-container {
@@ -649,9 +667,13 @@ onUnmounted(() => {
   padding: 20px;
   border-radius: 4px;
   font-family: 'Courier New', monospace;
-  min-width: 400px;
+  min-width: 480px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
   position: relative;
-  z-index: 51;
+  z-index: 101;
+  pointer-events: auto;
 }
 
 .inventory-container h2 {
@@ -772,6 +794,12 @@ onUnmounted(() => {
   margin-bottom: 6px;
 }
 
+.creative-catalog {
+  margin-top: 10px;
+  position: relative;
+  z-index: 102;
+}
+
 .creative-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -780,18 +808,34 @@ onUnmounted(() => {
 }
 
 .creative-tab {
-  padding: 4px 10px;
+  padding: 6px 12px;
   border: 2px solid;
   border-color: #eee #555 #555 #eee;
   background: #999;
   color: #222;
   cursor: pointer;
   font-weight: bold;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  position: relative;
+  user-select: none;
+  outline: none;
+}
+
+.creative-tab:hover {
+  background: #b0b0b0;
 }
 
 .creative-tab.active {
   background: #d4d4d4;
   border-color: #555 #eee #eee #555;
+  color: #000;
+}
+
+.creative-label {
+  font-size: 12px;
+  color: #444;
+  margin-bottom: 4px;
 }
 
 .creative-grid {
@@ -804,6 +848,7 @@ onUnmounted(() => {
   background: #777;
   border: 2px solid;
   border-color: #555 #eee #eee #555;
+  position: relative;
 }
 
 .creative-slot {
@@ -818,6 +863,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  position: relative;
+}
+
+.creative-slot:hover {
+  background: #9b9b9b;
+  border-color: #fff #555 #555 #fff;
 }
 
 .creative-item-name {

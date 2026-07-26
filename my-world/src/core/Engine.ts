@@ -11,11 +11,12 @@ import { ChunkManager } from '@/world/ChunkManager'
 import { PhysicsEngine } from '@/physics/PhysicsEngine'
 import { BlockInteraction } from '@/gameplay/BlockInteraction'
 import { RedstoneSystem } from '@/gameplay/RedstoneSystem'
+import { SaveSystem } from '@/gameplay/SaveSystem'
 import { BlockType } from '@/types/blocks'
 import { PLAYER_SPEED, PLAYER_SPRINT_SPEED, JUMP_VELOCITY, MOUSE_SENSITIVITY, PLAYER_WIDTH, PLAYER_HEIGHT, GRAVITY } from '@/utils/constants'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { usePlayerStore } from '@/ui/stores/playerStore'
-import { ITEM_REGISTRY } from '@/types/items'
+import { ITEM_REGISTRY, getItemDefinition } from '@/types/items'
 import { EntityManager } from '@/entities/EntityManager'
 import { Animal, type AnimalKind } from '@/entities/characters/Animal'
 import { Zombie } from '@/entities/characters/Zombie'
@@ -318,6 +319,7 @@ export class Engine {
   // Break timing
   private breakInterval: number | null = null
   private isBreaking = false
+  private autoSaveInterval: number | null = null
 
   // === NEW: Game mode ===
   private gameMode: 'survival' | 'creative' = 'survival' // default survival
@@ -455,6 +457,17 @@ export class Engine {
 
     window.addEventListener('resize', () => this.onResize())
 
+    // 注册存档回调到 playerStore
+    const pStoreInit = usePlayerStore()
+    pStoreInit.saveCallback = () => this.saveGame()
+
+    // 自动保存定时器（60秒）
+    this.autoSaveInterval = window.setInterval(() => {
+      if (this.gameMode === 'survival' && !this.isDead) {
+        this.saveGame()
+      }
+    }, 60000)
+
     this.gameLoop.start(
       (dt) => this.update(dt),
       (dt) => this.render(dt),
@@ -464,6 +477,14 @@ export class Engine {
   private setupInputHandlers(): void {
     this.inputManager.onKeyDown = (key: string) => {
       if (key === 'F5') this.cameraManager.toggleMode()
+
+      // F2: 手动保存
+      if (key === 'F2') {
+        const saved = this.saveGame()
+        const pStore = usePlayerStore()
+        pStore.breakToolName = saved ? '✓ 已保存' : '✗ 保存失败'
+        setTimeout(() => { pStore.breakToolName = null }, 2000)
+      }
 
       if (key === 'KeyE') {
         if (document.pointerLockElement) document.exitPointerLock()
@@ -505,11 +526,19 @@ export class Engine {
     this.inputManager.onMouseDown = (button: number) => {
       if (!this.inputManager.locked) return
       if (button === 0) {
-        this.isBreaking = true
-        this.startBreaking()
+        // 左键: 先检查是否攻击实体，否则挖方块
+        if (!this.attackEntity()) {
+          this.isBreaking = true
+          this.startBreaking()
+        }
       } else if (button === 2) {
         const forcePlace = this.inputManager.isKeyPressed('ShiftLeft') || this.inputManager.isKeyPressed('ShiftRight')
-        if (forcePlace || !this.openTargetContainer()) this.placeBlock()
+        // 右键: 先检查吃食物，否则开容器/放方块
+        if (!forcePlace && !this.openTargetContainer()) {
+          if (!this.eatFood()) this.placeBlock()
+        } else {
+          this.placeBlock()
+        }
       }
     }
 
@@ -558,6 +587,12 @@ export class Engine {
     this.eventBus.emit('game:modeChanged', this.gameMode)
   }
 
+  /** 公开方法：设置游戏模式 */
+  setGameMode(mode: 'survival' | 'creative'): void {
+    if (this.gameMode === mode) return
+    this.toggleGameMode()
+  }
+
   private startBreaking(): void {
     if (this.breakInterval) return
     const isCreative = this.gameMode === 'creative'
@@ -590,6 +625,99 @@ export class Engine {
 
   private stopBreaking(): void {
     if (this.breakInterval) { clearInterval(this.breakInterval); this.breakInterval = null }
+  }
+
+  /** 食物恢复量映射 */
+  private static readonly FOOD_VALUES: Record<string, number> = {
+    apple: 4, golden_apple: 4, enchanted_golden_apple: 4,
+    bread: 5, cooked_beef: 8, cooked_porkchop: 8, cooked_chicken: 6,
+    cooked_mutton: 6, cooked_cod: 5, cooked_salmon: 6,
+    carrot: 3, golden_carrot: 4, potato: 1, baked_potato: 5,
+    melon_slice: 2, cookie: 2, pumpkin_pie: 8,
+    mushroom_stew: 6, beetroot: 1, beetroot_soup: 6,
+    rabbit_stew: 10, dried_kelp: 1, sweet_berries: 2,
+    raw_beef: 3, raw_porkchop: 3, raw_chicken: 2,
+    raw_mutton: 2, raw_cod: 2, raw_salmon: 2,
+  }
+
+  /** 右键吃食物，返回是否成功 */
+  private eatFood(): boolean {
+    if (this.gameMode !== 'survival') return false
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    if (!slot?.item) return false
+
+    const healAmount = Engine.FOOD_VALUES[slot.item]
+    if (!healAmount) return false
+
+    const pStore = usePlayerStore()
+    if (pStore.health >= pStore.maxHealth) return false // 满血不能吃
+
+    // 消耗食物
+    pStore.health = Math.min(pStore.maxHealth, pStore.health + healAmount)
+    slot.count--
+    if (slot.count <= 0) {
+      slot.item = null
+      slot.count = 0
+    }
+    this.eventBus.emit('player:heal', { amount: healAmount, source: slot.item ?? 'food' })
+    return true
+  }
+
+  /** 左键攻击实体（动物/僵尸等），返回是否命中 */
+  private attackEntity(): boolean {
+    const camPos = this.cameraManager.activeCamera.position.clone()
+    const camDir = this.cameraManager.getForwardDirection()
+
+    // 射线检测 3 格内的实体
+    const allEntities = this.entityManager.getAllEntities()
+    let closestDist = 3.0
+    let targetEntity: import('@/entities/Entity').Entity | null = null
+
+    for (const entity of allEntities) {
+      if (!entity.isAlive) continue
+      const toEntity = entity.position.clone().sub(camPos)
+      const dist = toEntity.length()
+      if (dist > closestDist) continue
+      // 简单的方向检测：实体是否在准星附近
+      const dot = toEntity.normalize().dot(camDir)
+      if (dot > 0.92) {
+        closestDist = dist
+        targetEntity = entity
+      }
+    }
+
+    if (!targetEntity) return false
+
+    // 计算伤害（空手 1，手持武器用武器伤害）
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    let damage = 1
+    if (slot?.item) {
+      const itemDef = getItemDefinition(slot.item)
+      if (itemDef?.damage) damage = itemDef.damage
+    }
+
+    targetEntity.takeDamage(damage)
+
+    // 击退
+    const knockback = camDir.clone().setY(0.3).normalize().multiplyScalar(0.5)
+    targetEntity.position.add(knockback)
+
+    // 武器耐久消耗
+    if (slot?.item) {
+      const itemDef = getItemDefinition(slot.item)
+      if (itemDef?.durability) {
+        if (!slot.durabilityDamage) slot.durabilityDamage = 0
+        slot.durabilityDamage++
+        if (slot.durabilityDamage >= itemDef.durability) {
+          slot.item = null
+          slot.count = 0
+          slot.durabilityDamage = 0
+        }
+      }
+    }
+    return true
   }
 
   private placeBlock(): void {
@@ -1118,9 +1246,104 @@ export class Engine {
     return { x: Math.floor(centerX), z: Math.floor(centerZ) }
   }
 
+  /** 保存游戏状态 */
+  saveGame(): boolean {
+    const pStore = usePlayerStore()
+    const inv = useInventoryStore()
+
+    const saveData = {
+      version: 1 as const,
+      timestamp: Date.now(),
+      playerPosition: { x: this.playerPosition.x, y: this.playerPosition.y, z: this.playerPosition.z },
+      playerVelocity: { x: this.playerVelocity.x, y: this.playerVelocity.y, z: this.playerVelocity.z },
+      health: pStore.health,
+      oxygen: pStore.oxygen,
+      gameMode: pStore.gameMode,
+      isFlying: pStore.isFlying,
+      timeOfDay: pStore.timeOfDay,
+      worldSeed: this.seed,
+      isSuperflat: this.superflat,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      hotbar: inv.hotbar.map(slot => ({
+        item: slot.item,
+        count: slot.count,
+        blockType: slot.blockType,
+        durabilityDamage: slot.durabilityDamage,
+      })),
+      mainInventory: inv.mainInventory.map(slot => ({
+        item: slot.item,
+        count: slot.count,
+        blockType: slot.blockType,
+      })),
+      armor: inv.armor.map(slot => ({
+        item: slot.item,
+        slotType: slot.slotType,
+      })),
+    }
+
+    return SaveSystem.save(saveData)
+  }
+
+  /** 加载游戏状态 */
+  loadGame(saveData: import('@/gameplay/SaveSystem').SaveData): boolean {
+    try {
+      const pStore = usePlayerStore()
+      const inv = useInventoryStore()
+
+      // 恢复玩家状态
+      this.playerPosition.set(saveData.playerPosition.x, saveData.playerPosition.y, saveData.playerPosition.z)
+      this.playerVelocity.set(saveData.playerVelocity.x, saveData.playerVelocity.y, saveData.playerVelocity.z)
+      this.yaw = saveData.yaw
+      this.pitch = saveData.pitch
+
+      // 恢复 UI store
+      pStore.health = saveData.health
+      pStore.oxygen = saveData.oxygen
+      pStore.gameMode = saveData.gameMode
+      pStore.isFlying = saveData.isFlying
+      pStore.timeOfDay = saveData.timeOfDay
+
+      // 恢复物品栏
+      for (let i = 0; i < 9; i++) {
+        const slot = saveData.hotbar[i]
+        inv.hotbar[i] = {
+          item: slot.item,
+          count: slot.count,
+          blockType: slot.blockType as any,
+          durabilityDamage: slot.durabilityDamage,
+        }
+      }
+      for (let i = 0; i < 27; i++) {
+        const slot = saveData.mainInventory[i]
+        inv.mainInventory[i] = {
+          item: slot.item,
+          count: slot.count,
+          blockType: slot.blockType as any,
+        }
+      }
+      for (let i = 0; i < 4; i++) {
+        const slot = saveData.armor[i]
+        inv.armor[i] = {
+          item: slot.item,
+          slotType: slot.slotType as any,
+        }
+      }
+
+      // 更新相机
+      this.cameraManager.setRotation(this.yaw, this.pitch)
+
+      return true
+    } catch (err) {
+      console.error('[Engine] Failed to load game:', err)
+      return false
+    }
+  }
+
   dispose(): void {
     this.gameLoop.stop()
     this.stopBreaking()
+    if (this.autoSaveInterval) clearInterval(this.autoSaveInterval)
     this.blockInteraction.dispose()
     this.redstoneSystem.dispose()
     this.entityManager.dispose()

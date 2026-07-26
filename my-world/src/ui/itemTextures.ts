@@ -7,13 +7,14 @@
 
 type PixelMap = Record<string, string>
 type Template = string[]
+type Pixel = [number, number, string]
 
 // ── Canvas helper ──────────────────────────────────────────────────────────
 
 const ICON_SIZE = 16
 
-function templateToPixels(tpl: Template, colorMap: PixelMap): number[][] {
-  const pixels: number[][] = []
+function templateToPixels(tpl: Template, colorMap: PixelMap): Pixel[] {
+  const pixels: Pixel[] = []
   for (let y = 0; y < tpl.length; y++) {
     const row = tpl[y]
     for (let x = 0; x < row.length; x++) {
@@ -26,10 +27,10 @@ function templateToPixels(tpl: Template, colorMap: PixelMap): number[][] {
   return pixels
 }
 
-function drawPixels(ctx: CanvasRenderingContext2D, pixels: number[][]) {
-  for (const [x, y, color] of pixels) {
-    ctx.fillStyle = color
-    ctx.fillRect(x, y, 1, 1)
+function drawPixels(ctx: CanvasRenderingContext2D, pixels: ReadonlyArray<ReadonlyArray<number | string>>) {
+  for (const pixel of pixels) {
+    ctx.fillStyle = String(pixel[2])
+    ctx.fillRect(Number(pixel[0]), Number(pixel[1]), 1, 1)
   }
 }
 
@@ -812,7 +813,7 @@ function generateIcon(itemId: string): string | null {
   // ── Tools (pickaxe, axe, shovel, hoe) ──
   const toolMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite)_(pickaxe|axe|shovel|hoe)$/)
   if (toolMatch) {
-    const level = toolMatch[1]
+    const level = toolMatch[1] === 'wooden' ? 'wood' : toolMatch[1]
     const kind = toolMatch[2]
     const tier = TIER_HEAD[level]
     let headTpl: Template
@@ -839,7 +840,7 @@ function generateIcon(itemId: string): string | null {
   // ── Swords ──
   const swordMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite)_sword$/)
   if (swordMatch) {
-    const level = swordMatch[1]
+    const level = swordMatch[1] === 'wooden' ? 'wood' : swordMatch[1]
     const tier = TIER_HEAD[level]
     const colors: PixelMap = {
       H: tier.H,

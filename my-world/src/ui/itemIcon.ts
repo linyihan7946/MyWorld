@@ -35,7 +35,14 @@ export function getItemIconStyle(itemId: string | null, explicitBlockType?: Bloc
   }
   // Non-block items: use procedurally generated pixel-art icons
   if (itemId) {
-    const dataUrl = _getItemIconDataUrl(itemId)
+    let dataUrl: string | null = null
+    try {
+      dataUrl = _getItemIconDataUrl(itemId)
+    } catch (error) {
+      // One malformed procedural texture must not prevent an entire creative
+      // category (such as Tools or Combat) from opening.
+      console.warn(`Failed to render inventory icon for ${itemId}`, error)
+    }
     if (dataUrl) {
       return {
         backgroundImage: `url("${dataUrl}")`,

@@ -522,11 +522,7 @@ const MC_HARDNESS: Partial<Record<BlockType, number>> = {
   [BlockType.BLACKSTONE]: 1.5,
   [BlockType.POLISHED_BLACKSTONE]: 2.0,
 
-  // === 下界砖相关 ===
-  [BlockType.NETHER_QUARTZ_ORE]: 3.0,
-
   // === 染色玻璃 ===
-  [BlockType.GLASS]: 0.3,
   [BlockType.WHITE_STAINED_GLASS]: 0.3,
   [BlockType.ORANGE_STAINED_GLASS]: 0.3,
   [BlockType.MAGENTA_STAINED_GLASS]: 0.3,

@@ -15,47 +15,59 @@
       </div>
     </div>
 
-    <div v-if="!started" class="start-screen">
-      <div class="start-content">
-        <h1>My World</h1>
-        <p>3D方块世界</p>
-        <div class="seed-input">
-          <label for="world-seed">世界种子</label>
+    <!-- Minecraft 风格主菜单 -->
+    <div v-if="!started" class="minecraft-menu">
+      <div class="menu-bg"></div>
+      <div class="menu-content">
+        <div class="menu-title-area">
+          <h1 class="minecraft-title">MINECRAFT</h1>
+          <p class="minecraft-subtitle">My World Edition</p>
+        </div>
+
+        <div class="menu-buttons">
+          <button class="mc-btn primary" @click="startSurvival">
+            <span class="mc-btn-text">单人游戏</span>
+          </button>
+          <button class="mc-btn" @click="startCreative">
+            <span class="mc-btn-text">创造模式</span>
+          </button>
+          <button class="mc-btn" @click="startSuperflat">
+            <span class="mc-btn-text">超平坦世界</span>
+          </button>
+          <button v-if="hasSave" class="mc-btn" @click="loadSavedGame">
+            <span class="mc-btn-text">加载存档</span>
+            <span v-if="saveTimestamp" class="mc-btn-sub">保存于 {{ formatTimestamp(saveTimestamp) }}</span>
+          </button>
+        </div>
+
+        <div class="menu-seed">
+          <label class="mc-label">世界种子</label>
           <input
-            id="world-seed"
+            class="mc-input"
             v-model="seedInput"
             type="text"
-            placeholder="留空随机生成 (如: 12345 或 mchello)"
-            @keydown.enter="startGame"
+            placeholder="留空随机 (如: 12345)"
+            @keydown.enter="startSurvival"
           />
-          <p class="seed-hint">支持数字或文字种子，相同种子生成相同世界</p>
         </div>
-        <div class="world-options">
-          <label class="option-check">
-            <input type="checkbox" v-model="superflatMode" />
-            <span>超平坦世界</span>
-          </label>
-          <p class="seed-hint">基岩 + 2层泥土 + 草方块，完全平坦的地形</p>
+
+        <div class="menu-footer">
+          <span class="version-text">My World v0.1</span>
+          <span class="copyright-text">Not an official Minecraft product</span>
         </div>
-        <button @click="startGame">开始游戏</button>
-        <div class="controls-info">
-          <h3>操作说明</h3>
-          <p>WASD - 移动 | 空格 - 跳跃 | Shift - 冲刺</p>
-          <p>鼠标 - 视角 | 左键 - 拆方块 | 右键 - 打开容器 | Shift+右键 - 强制放置</p>
-          <p>F5 - 切换视角 | E - 背包 | 1-9 - 快捷栏</p>
-          <p>点击画面锁定鼠标</p>
-        </div>
+
+        <div v-if="gameMessage" class="game-message">{{ gameMessage }}</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
-import { markRaw } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { Engine } from '@/core/Engine'
 import { usePlayerStore } from '@/ui/stores/playerStore'
 import { useUIStore } from '@/ui/stores/uiStore'
+import { SaveSystem } from '@/gameplay/SaveSystem'
 import HUD from '@/ui/components/HUD.vue'
 import InventoryScreen from '@/ui/components/InventoryScreen.vue'
 import ContainerScreen from '@/ui/components/ContainerScreen.vue'
@@ -67,26 +79,26 @@ const started = ref(false)
 const showDebug = ref(true)
 const seedInput = ref('')
 const superflatMode = ref(false)
+const gameMode = ref<'survival' | 'creative'>('survival')
+const gameMessage = ref('')
+
+// Save system
+const hasSave = ref(SaveSystem.hasSave())
+const saveTimestamp = ref(SaveSystem.getSaveTimestamp())
 
 const playerStore = usePlayerStore()
 const uiStore = useUIStore()
 
 /**
- * 将字符串种子哈希为数字（类似 Minecraft 的 seed 哈希）
- * 空字符串返回 null（使用随机种子）
+ * 将字符串种子哈希为数字
  */
 function parseSeed(input: string): number | undefined {
   const trimmed = input.trim()
   if (!trimmed) return undefined
-
-  // 纯数字：直接解析
   if (/^-?\d+$/.test(trimmed)) {
     const n = parseInt(trimmed, 10)
-    // 限制在 safe 范围内
     return ((n % 2147483647) + 2147483647) % 2147483647 || 1
   }
-
-  // 文字种子：Java String.hashCode 风格
   let hash = 0
   for (let i = 0; i < trimmed.length; i++) {
     hash = ((hash << 5) - hash + trimmed.charCodeAt(i)) | 0
@@ -94,16 +106,38 @@ function parseSeed(input: string): number | undefined {
   return Math.abs(hash) || 1
 }
 
-const startGame = async () => {
-  if (!gameCanvas.value || engine) return
+/** 格式化时间戳 */
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+}
 
+/** 启动游戏核心逻辑 */
+const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loadSave: boolean = false) => {
+  if (!gameCanvas.value || engine) return
   try {
     started.value = true
+    gameMessage.value = ''
     const seed = parseSeed(seedInput.value)
-    engine = new Engine(gameCanvas.value, seed, superflatMode.value)
+    engine = new Engine(gameCanvas.value, seed, isSuperflat)
     await engine.init()
 
-    // Listen to engine events
+    // 设置游戏模式
+    if (mode === 'creative') {
+      engine.setGameMode('creative')
+    }
+
+    // 加载存档
+    if (loadSave) {
+      const saveData = SaveSystem.load()
+      if (saveData) {
+        engine.loadGame(saveData)
+        gameMessage.value = '存档已加载'
+        setTimeout(() => gameMessage.value = '', 3000)
+      }
+    }
+
+    // 监听事件
     engine.eventBus.on('player:position', (pos: { x: number; y: number; z: number }) => {
       playerStore.position = pos
     })
@@ -113,7 +147,19 @@ const startGame = async () => {
   } catch (err: any) {
     console.error('Game init error:', err)
     started.value = false
-    alert('游戏初始化出错: ' + (err?.message || err))
+    gameMessage.value = '启动失败: ' + (err?.message || err)
+  }
+}
+
+const startSurvival = () => initGame('survival', false)
+const startCreative = () => initGame('creative', false)
+const startSuperflat = () => initGame('survival', true)
+const loadSavedGame = () => {
+  const saveData = SaveSystem.load()
+  if (saveData) {
+    seedInput.value = String(saveData.worldSeed)
+    superflatMode.value = saveData.isSuperflat
+    initGame(saveData.gameMode, saveData.isSuperflat, true)
   }
 }
 
@@ -207,136 +253,192 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   transform: scale(1.05);
 }
 
-.start-screen {
+/* === Minecraft 风格主菜单 === */
+.minecraft-menu {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, #1a4a1a 0%, #2d6b2d 30%, #1a4a1a 60%, #0d300d 100%);
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  overflow: hidden;
 }
 
-.start-content {
+.menu-bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background:
+    linear-gradient(180deg,
+      #1a1a2e 0%,
+      #16213e 30%,
+      #0f3460 60%,
+      #1a1a2e 100%);
+  z-index: -1;
+}
+
+.menu-bg::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 100%; height: 60px;
+  background:
+    repeating-linear-gradient(90deg,
+      #5a3a1a 0px, #5a3a1a 16px,
+      #4a2a10 16px, #4a2a10 32px);
+  border-top: 4px solid #3a2a0a;
+}
+
+.menu-content {
   text-align: center;
-  color: white;
   font-family: 'Courier New', monospace;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  position: relative;
+  z-index: 1;
 }
 
-.start-content h1 {
+.menu-title-area {
+  margin-bottom: 20px;
+}
+
+.minecraft-title {
   font-size: 72px;
-  text-shadow: 4px 4px 0 #000, -2px -2px 0 #333;
-  margin-bottom: 10px;
-  letter-spacing: 4px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow:
+    3px 3px 0px #3b3b3b,
+    5px 5px 0px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(100, 200, 255, 0.2);
+  letter-spacing: 8px;
+  line-height: 1;
 }
 
-.start-content p {
+.minecraft-subtitle {
+  font-size: 16px;
+  color: #ffdd57;
+  text-shadow: 2px 2px 0px #000;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 400px;
+  max-width: 90vw;
+}
+
+.mc-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 20px;
+  min-height: 44px;
+  background: #737373;
+  border: 3px solid;
+  border-color: #a0a0a0 #505050 #505050 #a0a0a0;
+  color: #e0e0e0;
+  font-family: 'Courier New', monospace;
   font-size: 18px;
-  margin-bottom: 30px;
-  color: #ccc;
+  cursor: pointer;
+  text-shadow: 2px 2px 0px #3b3b3b;
+  transition: all 0.1s;
+  outline: none;
 }
 
-.seed-input {
-  margin: 20px auto;
-  max-width: 400px;
-  text-align: left;
+.mc-btn:hover {
+  background: #858585;
+  border-color: #c0c0c0 #606060 #606060 #c0c0c0;
+  color: #ffffa0;
 }
 
-.seed-input label {
-  display: block;
-  font-size: 14px;
+.mc-btn:active {
+  background: #606060;
+  border-color: #505050 #a0a0a0 #a0a0a0 #505050;
+}
+
+.mc-btn.primary {
+  background: #5a8a3c;
+  border-color: #7ab05c #3a6a1c #3a6a1c #7ab05c;
+}
+
+.mc-btn.primary:hover {
+  background: #6a9a4c;
+  border-color: #8ac06c #4a7a2c #4a7a2c #8ac06c;
+}
+
+.mc-btn-text {
+  font-weight: bold;
+}
+
+.mc-btn-sub {
+  font-size: 11px;
   color: #aaa;
-  margin-bottom: 6px;
+  margin-top: 2px;
+}
+
+.menu-seed {
+  margin-top: 10px;
+  width: 400px;
+  max-width: 90vw;
+}
+
+.mc-label {
+  display: block;
+  font-size: 13px;
+  color: #aaa;
+  text-align: left;
+  margin-bottom: 4px;
   text-shadow: 1px 1px 0 #000;
 }
 
-.seed-input input {
+.mc-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   font-family: 'Courier New', monospace;
-  font-size: 16px;
-  background: rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.6);
   color: #fff;
   border: 2px solid #555;
-  border-radius: 4px;
+  border-radius: 2px;
   outline: none;
-  transition: border-color 0.2s;
 }
 
-.seed-input input:focus {
-  border-color: #4a8a4a;
+.mc-input:focus {
+  border-color: #7ab05c;
 }
 
-.seed-input input::placeholder {
+.mc-input::placeholder {
   color: rgba(255, 255, 255, 0.3);
 }
 
-.seed-hint {
-  font-size: 11px !important;
-  color: #888 !important;
-  margin-top: 6px !important;
-  margin-bottom: 10px !important;
-}
-
-.world-options {
-  margin: 12px auto;
-  max-width: 400px;
-  text-align: left;
-}
-
-.option-check {
+.menu-footer {
+  margin-top: 20px;
+  width: 400px;
+  max-width: 90vw;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-  font-size: 15px;
-  color: #ddd;
-  text-shadow: 1px 1px 0 #000;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
-.option-check input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #4a8a4a;
-  cursor: pointer;
-}
-
-.start-content button {
-  font-family: 'Courier New', monospace;
-  font-size: 24px;
-  padding: 15px 60px;
-  background: #4a8a4a;
-  color: white;
-  border: 3px solid #2d6b2d;
-  cursor: pointer;
-  text-shadow: 2px 2px 0 #000;
-  transition: all 0.2s;
-}
-
-.start-content button:hover {
-  background: #5a9a5a;
-  transform: scale(1.05);
-}
-
-.controls-info {
-  margin-top: 40px;
-  padding: 20px;
-  background: rgba(0,0,0,0.3);
-  border-radius: 8px;
-}
-
-.controls-info h3 {
-  margin-bottom: 10px;
-  font-size: 16px;
-}
-
-.controls-info p {
-  font-size: 13px;
-  margin: 5px 0;
-  color: #aaa;
+.game-message {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #4caf50;
+  padding: 8px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 </style>

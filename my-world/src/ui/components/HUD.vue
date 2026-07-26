@@ -57,8 +57,11 @@
 
     <!-- Controls hint -->
     <div class="controls-hint">
-      G: 切换模式 | 双击空格: 飞行
+      G: 切换模式 | 双击空格: 飞行 | F2: 保存
     </div>
+
+    <!-- Save status notification -->
+    <div v-if="saveMessage" class="save-notify">{{ saveMessage }}</div>
   </div>
 </template>
 
@@ -67,10 +70,19 @@ import { usePlayerStore } from '@/ui/stores/playerStore'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { ITEM_REGISTRY } from '@/types/items'
 import { getItemIconStyle } from '@/ui/itemIcon'
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const playerStore = usePlayerStore()
 const inventoryStore = useInventoryStore()
+
+// Save notification
+const saveMessage = ref('')
+watch(() => playerStore.breakToolName, (name) => {
+  if (name === '✓ 已保存' || name === '✗ 保存失败') {
+    saveMessage.value = name
+    setTimeout(() => { saveMessage.value = '' }, 2500)
+  }
+})
 
 const isNight = computed(() => playerStore.timeOfDay < 0.23 || playerStore.timeOfDay > 0.77)
 const formattedTime = computed(() => {
@@ -258,5 +270,26 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   font-family: monospace; font-size: 11px;
   color: rgba(255,255,255,0.4);
   text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
+
+.save-notify {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #4caf50;
+  padding: 10px 24px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  text-shadow: 1px 1px 0 #000;
+  z-index: 20;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 </style>
