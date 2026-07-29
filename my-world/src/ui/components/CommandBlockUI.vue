@@ -115,8 +115,8 @@ function open(data: { x: number; y: number; z: number; blockType: BlockType }) {
   position.value = { x: data.x, y: data.y, z: data.z }
   blockType.value = data.blockType
   command.value = getCommand(data.x, data.y, data.z)
-  alwaysOn.value = getBlockStateValue(data.x, data.y, data.z, 'alwaysOn', false)
-  conditional.value = getBlockStateValue(data.x, data.y, data.z, 'conditional', false)
+  alwaysOn.value = getBlockStateValue(data.x, data.y, data.z, 'alwaysOn', false) as boolean
+  conditional.value = getBlockStateValue(data.x, data.y, data.z, 'conditional', false) as boolean
   commandError.value = ''
   isOpen.value = true
 }

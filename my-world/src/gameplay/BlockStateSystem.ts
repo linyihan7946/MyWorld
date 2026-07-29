@@ -234,7 +234,7 @@ export function debugStickUse(
 
   return {
     propName: prop.name,
-    newValue: nextValue,
+    newValue: nextValue as string | number | boolean,
     message: `${prop.name} → ${valueStr}`,
   }
 }
@@ -278,7 +278,7 @@ export function getLightLevel(x: number, y: number, z: number): number {
  * 获取命令方块的命令
  */
 export function getCommand(x: number, y: number, z: number): string {
-  return getBlockStateValue(x, y, z, 'command', '')
+  return getBlockStateValue(x, y, z, 'command', '') as string
 }
 
 /**
@@ -292,14 +292,14 @@ export function setCommand(x: number, y: number, z: number, command: string): vo
  * 获取命令方块是否保持开启
  */
 export function isCommandAlwaysOn(x: number, y: number, z: number): boolean {
-  return getBlockStateValue(x, y, z, 'alwaysOn', false)
+  return getBlockStateValue(x, y, z, 'alwaysOn', false) as boolean
 }
 
 /**
  * 获取命令方块是否是条件模式
  */
 export function isCommandConditional(x: number, y: number, z: number): boolean {
-  return getBlockStateValue(x, y, z, 'conditional', false)
+  return getBlockStateValue(x, y, z, 'conditional', false) as boolean
 }
 
 /**

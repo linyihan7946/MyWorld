@@ -216,9 +216,7 @@ export class WeatherSystem {
       this.updateThunder(dt)
     } else {
       this.thunderFlash = 0
-      if (this.current !== 'thunder') {
-        this.lastActiveWeather = this.current
-      }
+      this.lastActiveWeather = this.current
     }
 
     // Always update bolt meshes (fade / remove expired)
@@ -468,11 +466,13 @@ export class WeatherSystem {
   dispose(): void {
     if (this.rainParticles) {
       this.rainParticles.geometry.dispose()
-      (this.rainParticles.material as THREE.Material).dispose()
+      const mat = this.rainParticles.material as THREE.Material
+      mat.dispose()
     }
     if (this.snowParticles) {
       this.snowParticles.geometry.dispose()
-      (this.snowParticles.material as THREE.Material).dispose()
+      const mat = this.snowParticles.material as THREE.Material
+      mat.dispose()
     }
     // Clean up any remaining bolts
     for (const bolt of this.bolts) {

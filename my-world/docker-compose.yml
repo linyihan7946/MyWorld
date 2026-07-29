@@ -1,8 +1,6 @@
 # MyWorld - Minecraft 方块世界
 # Docker Compose 部署配置
 
-version: "3.8"
-
 services:
   my-world:
     build:

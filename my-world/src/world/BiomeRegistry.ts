@@ -37,7 +37,7 @@ const S = BlockType.SAND
 const R = BlockType.RED_SAND
 const W = BlockType.WATER
 const T = BlockType.TERRACOTTA
-const C = BlockType.COARSE_DIRT ?? BlockType.DIRT // fallback
+const C = BlockType.DIRT
 
 export const BIOMES: Record<BiomeId, BiomeDef> = {
 
@@ -216,7 +216,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
   },
   mangrove_swamp: {
     id: 'mangrove_swamp', name: '红树林沼泽',
-    surface: G, subsurface: BlockType.MUD ?? D,
+    surface: G, subsurface: BlockType.CLAY ?? D,
     heightBase: 62, heightVariation: 2,
     treeType: 'oak', treeDensity: 0.7,
     grassColor: 0x6A7B4F, waterColor: 0x3D6B54,
