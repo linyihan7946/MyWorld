@@ -72,6 +72,13 @@
         <div v-if="gameMessage" class="game-message">{{ gameMessage }}</div>
       </div>
     </div>
+
+    <!-- 竖屏旋转提示（仅手机端） -->
+    <div v-if="isPortrait && started" class="rotate-overlay" @click="tryLockLandscape">
+      <div class="rotate-icon">📱</div>
+      <div class="rotate-text">请旋转手机至横屏</div>
+      <div class="rotate-hint">点击屏幕尝试自动旋转</div>
+    </div>
   </div>
 </template>
 
@@ -134,6 +141,12 @@ const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loa
   try {
     started.value = true
     gameMessage.value = ''
+
+    // 移动端尝试强制横屏
+    if (playerStore.controlMode === 'mobile') {
+      tryLockLandscape()
+    }
+
     const seed = parseSeed(seedInput.value)
     engine = new Engine(gameCanvas.value, seed, isSuperflat)
     await engine.init()
@@ -234,9 +247,36 @@ window.addEventListener('orientationchange', handleOrientationChange)
 // 部分安卓浏览器不触发 orientationchange，监听 resize 兜底
 window.addEventListener('resize', handleOrientationChange)
 
+// 移动端强制横屏（需要全屏 API 支持）
+const tryLockLandscape = async () => {
+  try {
+    // 先进入全屏，然后锁定横屏方向
+    const el = document.documentElement
+    if (el.requestFullscreen) {
+      await el.requestFullscreen()
+    }
+    if (screen.orientation && 'lock' in screen.orientation) {
+      await (screen.orientation as any).lock('landscape')
+    }
+  } catch {
+    // 浏览器不支持或用户拒绝，静默失败
+  }
+}
+
+// 监听是否竖屏（显示旋转提示）
+const isPortrait = ref(false)
+const checkOrientation = () => {
+  isPortrait.value = window.innerHeight > window.innerWidth && playerStore.controlMode === 'mobile'
+}
+window.addEventListener('resize', checkOrientation)
+window.addEventListener('orientationchange', checkOrientation)
+setTimeout(checkOrientation, 500)
+
 onUnmounted(() => {
   window.removeEventListener('orientationchange', handleOrientationChange)
   window.removeEventListener('resize', handleOrientationChange)
+  window.removeEventListener('resize', checkOrientation)
+  window.removeEventListener('orientationchange', checkOrientation)
   engine?.dispose()
   engine = null
 })
@@ -583,5 +623,41 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
     font-size: 18px;
     padding: 10px 40px;
   }
+}
+
+/* ── 竖屏旋转提示 ── */
+.rotate-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.rotate-icon {
+  font-size: 80px;
+  animation: rotateShake 1.5s ease-in-out infinite;
+}
+.rotate-text {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  margin-top: 20px;
+  text-shadow: 2px 2px 0 #000;
+}
+.rotate-hint {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  margin-top: 12px;
+}
+@keyframes rotateShake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(90deg); }
+  75% { transform: rotate(90deg); }
 }
 </style>
