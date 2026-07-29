@@ -1,0 +1,20 @@
+# MyWorld - Minecraft 方块世界
+# Docker Compose 部署配置
+
+version: "3.8"
+
+services:
+  my-world:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my-world
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
