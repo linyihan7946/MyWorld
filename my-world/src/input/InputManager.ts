@@ -11,6 +11,11 @@ export class InputManager {
   private isPointerLocked = false
   private canvas: HTMLCanvasElement | null = null
 
+  // Virtual (touch) input state
+  private virtualForward = 0
+  private virtualRight = 0
+  private virtualActions = new Map<string, boolean>()
+
   // Callbacks
   public onKeyDown: ((key: string) => void) | null = null
   public onKeyUp: ((key: string) => void) | null = null
@@ -93,17 +98,54 @@ export class InputManager {
     return this.isPointerLocked
   }
 
+  // ── Virtual (touch) input API ──
+
+  /** Set virtual joystick movement (-1..1 for forward/right). */
+  setVirtualMovement(forward: number, right: number): void {
+    this.virtualForward = forward
+    this.virtualRight = right
+  }
+
+  /** Set virtual action button state and fire callbacks for common actions. */
+  setVirtualAction(action: string, pressed: boolean): void {
+    this.virtualActions.set(action, pressed)
+
+    // Map virtual actions to keyboard/mouse callbacks
+    if (action === 'attack') {
+      if (pressed) this.onMouseDown?.(0)   // left click
+      else this.onMouseUp?.(0)
+    } else if (action === 'place') {
+      if (pressed) this.onMouseDown?.(2)   // right click
+      else this.onMouseUp?.(2)
+    } else if (action === 'inventory' && pressed) {
+      this.onKeyDown?.('KeyE')
+    } else if (action === 'toggleCamera' && pressed) {
+      this.onKeyDown?.('KeyV')
+    } else if (action.startsWith('slot') && pressed) {
+      const num = parseInt(action.replace('slot', ''))
+      if (num >= 0 && num <= 8) {
+        this.onKeyDown?.(`Digit${num + 1}`)
+      }
+    }
+  }
+
   /**
-   * 获取玩家移动输入
+   * 获取玩家移动输入（合并键盘和虚拟输入）
    */
   getMovement(): { forward: boolean; backward: boolean; left: boolean; right: boolean; jump: boolean; sprint: boolean } {
+    // Virtual joystick
+    const vFwd = this.virtualForward
+    const vRgt = this.virtualRight
+    const vJump = this.virtualActions.get('jump') ?? false
+    const vSneak = this.virtualActions.get('sneak') ?? false
+
     return {
-      forward: this.isKeyPressed('KeyW'),
-      backward: this.isKeyPressed('KeyS'),
-      left: this.isKeyPressed('KeyA'),
-      right: this.isKeyPressed('KeyD'),
-      jump: this.isKeyPressed('Space'),
-      sprint: this.isKeyPressed('ShiftLeft') || this.isKeyPressed('ShiftRight'),
+      forward: this.isKeyPressed('KeyW') || vFwd > 0.3,
+      backward: this.isKeyPressed('KeyS') || vFwd < -0.3,
+      left: this.isKeyPressed('KeyA') || vRgt < -0.3,
+      right: this.isKeyPressed('KeyD') || vRgt > 0.3,
+      jump: this.isKeyPressed('Space') || vJump,
+      sprint: this.isKeyPressed('ShiftLeft') || this.isKeyPressed('ShiftRight') || vSneak,
     }
   }
 }

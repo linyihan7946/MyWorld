@@ -2,39 +2,37 @@ import { createNoise2D, createNoise3D } from 'simplex-noise'
 import { Chunk } from './Chunk'
 import { CHUNK_SIZE, CHUNK_HEIGHT } from '@/utils/constants'
 import { BlockType } from '@/types/blocks'
+import { BIOMES, type BiomeId, type BiomeDef } from './BiomeRegistry'
 import { Village, PillagerOutpost, Shipwreck, AncientCity, Stronghold } from './structures/Structures'
 
 /**
- * WorldGenerator - 程序化世界生成
+ * WorldGenerator — Minecraft-style multi-biome world generation.
+ * Uses temperature + moisture noise layers to distribute 40+ biomes.
  */
 export class WorldGenerator {
   private noise2D: ReturnType<typeof createNoise2D>
   private noise2D2: ReturnType<typeof createNoise2D>
   private noise3D: ReturnType<typeof createNoise3D>
-  private biomeNoise: ReturnType<typeof createNoise2D>
+  private tempNoise: ReturnType<typeof createNoise2D>
+  private moistNoise: ReturnType<typeof createNoise2D>
   private treeNoise: ReturnType<typeof createNoise2D>
   private caveNoise: ReturnType<typeof createNoise3D>
   private lushNoise: ReturnType<typeof createNoise3D>
+  private riverNoise: ReturnType<typeof createNoise2D>
   private superflat: boolean
 
   constructor(seed: number, superflat = false) {
     this.superflat = superflat
-    // Create seeded random
-    const rng = this.seededRandom(seed)
-    const rng2 = this.seededRandom(seed + 1)
-    const rng3 = this.seededRandom(seed + 2)
-    const rng4 = this.seededRandom(seed + 3)
-    const rng5 = this.seededRandom(seed + 4)
-    const rng6 = this.seededRandom(seed + 5)
-    const rng7 = this.seededRandom(seed + 6)
-
-    this.noise2D = createNoise2D(rng)
-    this.noise2D2 = createNoise2D(rng2)
-    this.noise3D = createNoise3D(rng3)
-    this.biomeNoise = createNoise2D(rng4)
-    this.treeNoise = createNoise2D(rng5)
-    this.caveNoise = createNoise3D(rng6)
-    this.lushNoise = createNoise3D(rng7)
+    const rng = (s: number) => this.seededRandom(s)
+    this.noise2D  = createNoise2D(rng(seed))
+    this.noise2D2 = createNoise2D(rng(seed + 1))
+    this.noise3D  = createNoise3D(rng(seed + 2))
+    this.tempNoise = createNoise2D(rng(seed + 3))
+    this.moistNoise = createNoise2D(rng(seed + 4))
+    this.treeNoise = createNoise2D(rng(seed + 5))
+    this.caveNoise = createNoise3D(rng(seed + 6))
+    this.lushNoise = createNoise3D(rng(seed + 7))
+    this.riverNoise = createNoise2D(rng(seed + 8))
   }
 
   private seededRandom(seed: number): () => number {
@@ -57,14 +55,19 @@ export class WorldGenerator {
       return
     }
 
+    const treeOk = (x: number, z: number) =>
+      x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2
+
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX + x
         const wz = worldZ + z
 
-        // Get height
+        // Get height and biome
         const height = this.getHeight(wx, wz)
         const biome = this.getBiome(wx, wz)
+        const biomeDef = BIOMES[biome]
+        const waterLevel = 62
 
         for (let y = 0; y < CHUNK_HEIGHT; y++) {
           let blockType = BlockType.AIR
@@ -74,12 +77,12 @@ export class WorldGenerator {
           } else if (y < height - 4) {
             blockType = BlockType.STONE
           } else if (y < height) {
-            blockType = this.getSubsurface(biome)
+            blockType = biomeDef.subsurface
           } else if (y === height) {
-            blockType = this.getSurface(biome)
-          } else if (y <= 62 && blockType === BlockType.AIR) {
-            // Water level
-            blockType = BlockType.WATER
+            blockType = biomeDef.surface
+          } else if (y <= waterLevel && height < waterLevel) {
+            // Ocean / river — fill with water above seabed
+            if (y > height) blockType = BlockType.WATER
           }
 
           // Ore generation
@@ -90,8 +93,7 @@ export class WorldGenerator {
           chunk.setBlock(x, y, z, blockType)
         }
 
-        // Continuous underground cave tunnels. A second noise field marks lush
-        // sections with moss, clay and ceiling light so they remain navigable.
+        // Caves
         for (let y = 5; y < Math.min(height - 4, 58); y++) {
           if (!this.isCave(wx, y, wz)) continue
           chunk.setBlock(x, y, z, BlockType.AIR)
@@ -106,16 +108,11 @@ export class WorldGenerator {
           }
         }
 
-        // Tree placement
-        if (height > 62 && biome === 'forest') {
+        // Tree placement (biome-specific type and density)
+        if (height > waterLevel && treeOk(x, z) && biomeDef.treeType) {
           const treeVal = this.treeNoise(wx * 0.5, wz * 0.5)
-          if (treeVal > 0.7 && x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2) {
-            this.placeTree(chunk, x, height + 1, z)
-          }
-        } else if (height > 62 && biome === 'plains') {
-          const treeVal = this.treeNoise(wx * 0.5, wz * 0.5)
-          if (treeVal > 0.9 && x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2) {
-            this.placeTree(chunk, x, height + 1, z)
+          if (treeVal > biomeDef.treeDensity) {
+            this.placeTree(chunk, x, height + 1, z, biomeDef.treeType)
           }
         }
       }
@@ -135,7 +132,7 @@ export class WorldGenerator {
     // Village in plains (every ~20 chunks) - only on flat land above water
     if (Math.abs(chunk.chunkX % 20) < 2 && Math.abs(chunk.chunkZ % 20) < 2) {
       const biome = this.getBiome(wx + 8, wz + 8)
-      if (biome === 'plains') {
+      if (biome.startsWith('plains') || biome === 'sunflower_plains' || biome === 'meadow') {
         const height = this.getFlatFoundationHeight(wx, wz, CHUNK_SIZE, CHUNK_SIZE)
         if (height !== null) {
           const village = new Village()
@@ -151,14 +148,14 @@ export class WorldGenerator {
       const centerZ = wz + 8
       const biome = this.getBiome(center, centerZ)
       const height = this.getFlatFoundationHeight(wx + 2, wz + 2, 11, 11)
-      if (height !== null && biome === 'plains') {
+      if (height !== null && (biome === 'plains' || biome === 'sunflower_plains')) {
         const outpost = new PillagerOutpost()
         outpost.placeInChunk(chunk, 5, height, 5)
       }
     }
 
     // Shipwreck is the explicit underwater ruin exception, not a surface building.
-    if (Math.abs(chunk.chunkX % 31) === 9 && Math.abs(chunk.chunkZ % 31) === 9 && this.getBiome(wx + 8, wz + 8) === 'ocean') {
+    if (Math.abs(chunk.chunkX % 31) === 9 && Math.abs(chunk.chunkZ % 31) === 9 && this.getBiome(wx + 8, wz + 8).includes('ocean')) {
       const shipwreck = new Shipwreck()
       shipwreck.placeInChunk(chunk, 4, Math.min(56, this.getHeight(wx + 8, wz + 8) + 1), 0, false)
     }
@@ -192,7 +189,7 @@ export class WorldGenerator {
         const height = this.getHeight(worldX, worldZ)
         const biome = this.getBiome(worldX, worldZ)
 
-        if (height <= 63 || biome !== 'plains') return null
+        if (height <= 63 || (biome !== 'plains' && biome !== 'sunflower_plains' && biome !== 'meadow')) return null
 
         minHeight = Math.min(minHeight, height)
         maxHeight = Math.max(maxHeight, height)
@@ -229,57 +226,135 @@ export class WorldGenerator {
         if (x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2) {
           const treeVal = this.treeNoise(wx * 0.5, wz * 0.5)
           if (treeVal > 0.92) {
-            this.placeTree(chunk, x, 4, z)
+            this.placeTree(chunk, x, 4, z, 'oak')
           }
         }
       }
     }
   }
 
+  // ── Temperature / moisture accessors ──
+
+  getTemperature(wx: number, wz: number): number {
+    return (this.tempNoise(wx * 0.0012, wz * 0.0012) + 1) / 2
+  }
+
+  getMoisture(wx: number, wz: number): number {
+    return (this.moistNoise(wx * 0.0012, wz * 0.0012) + 1) / 2
+  }
+
   /**
-   * 获取地形高度
+   * 获取地形高度 (combines base terrain + biome height).
    */
   getHeight(worldX: number, worldZ: number): number {
     if (this.superflat) return 3
 
-    // Multi-octave noise for terrain
-    const base = this.noise2D(worldX * 0.005, worldZ * 0.005) * 40
-    const detail = this.noise2D2(worldX * 0.02, worldZ * 0.02) * 10
-    const hills = this.noise2D(worldX * 0.01, worldZ * 0.01) * 20
-
-    return Math.floor(64 + base + detail + hills)
+    const biome = this.getBiome(worldX, worldZ)
+    const def = BIOMES[biome]
+    const base = this.noise2D(worldX * 0.005, worldZ * 0.005) * 30
+    const detail = this.noise2D2(worldX * 0.02, worldZ * 0.02) * 5
+    const hills = this.noise2D(worldX * 0.008, worldZ * 0.008) * def.heightVariation
+    const biomeBase = def.heightBase + hills
+    return Math.floor(biomeBase + base + detail)
   }
 
   /**
-   * 获取生物群系
+   * 获取生物群系 — temperature × moisture noise map.
    */
-  getBiome(worldX: number, worldZ: number): string {
-    const val = this.biomeNoise(worldX * 0.003, worldZ * 0.003)
-    const moisture = this.noise2D2(worldX * 0.004, worldZ * 0.004)
+  getBiome(worldX: number, worldZ: number): BiomeId {
+    // Continentalness (0 = deep ocean, 1 = inland)
+    const continent = (this.noise2D2(worldX * 0.0015, worldZ * 0.0015) + 1) / 2
+    const temp = this.getTemperature(worldX, worldZ)
+    const moist = this.getMoisture(worldX, worldZ)
 
-    if (val < -0.3) return 'ocean'
-    if (val < -0.1) return 'beach'
-    if (val > 0.4 && moisture < -0.2) return 'desert'
-    if (moisture > 0.3) return 'forest'
-    if (moisture > 0.1 && val > 0.2) return 'jungle'
+    // River carving (low continentalness + river noise)
+    const riverVal = this.riverNoise(worldX * 0.004, worldZ * 0.004)
+    const isRiver = continent > 0.25 && continent < 0.55 && Math.abs(riverVal) < 0.06
+    if (isRiver) {
+      return temp < 0.1 ? 'frozen_river' : 'river'
+    }
+
+    // Ocean / deep ocean
+    if (continent < 0.28) {
+      if (temp > 0.7) return 'warm_ocean'
+      if (temp > 0.5) return 'lukewarm_ocean'
+      if (temp < 0.1) return continent < 0.18 ? 'frozen_ocean' : 'cold_ocean'
+      return continent < 0.18 ? 'deep_ocean' : 'ocean'
+    }
+
+    // Beach / shore transition
+    if (continent < 0.35) {
+      if (temp < 0.1) return 'snowy_beach'
+      if (temp > 0.6 && moist < 0.3) return 'beach'
+      return moist < 0.35 ? 'beach' : 'stony_shore'
+    }
+
+    // Mushroom fields (very rare)
+    if (Math.abs(continent - 0.55) < 0.03 && Math.abs(moist - 0.85) < 0.04) {
+      return 'mushroom_fields'
+    }
+
+    // Mountains — high continentalness
+    if (continent > 0.72) {
+      if (continent > 0.85) {
+        if (temp < 0.1) return 'frozen_peaks'
+        if (temp > 0.6) return 'stony_peaks'
+        return 'jagged_peaks'
+      }
+      if (temp < 0.15) return 'grove'
+      if (temp < 0.35) return 'windswept_forest'
+      if (moist > 0.55) return 'windswept_forest'
+      if (temp > 0.65) return 'stony_peaks'
+      if (moist < 0.2) return 'windswept_gravelly_hills'
+      if (continent > 0.78) return 'meadow'
+      return 'windswept_hills'
+    }
+
+    // Hot + dry → desert variants
+    if (temp > 0.7 && moist < 0.2) {
+      if (continent > 0.62) return 'badlands'
+      return 'desert'
+    }
+    if (temp > 0.65 && moist < 0.1) return 'wooded_badlands'
+
+    // Hot + wet → jungle variants
+    if (temp > 0.65 && moist > 0.7) {
+      if (moist > 0.85) return 'jungle'
+      if (temp > 0.7) return 'sparse_jungle'
+      return 'bamboo_jungle'
+    }
+
+    // Hot + medium → savanna
+    if (temp > 0.65) {
+      return continent > 0.62 ? 'savanna_plateau' : 'savanna'
+    }
+
+    // Cold → snowy / taiga variants
+    if (temp < 0.2) {
+      if (moist > 0.5) return temp < 0.08 ? 'snowy_taiga' : 'taiga'
+      if (moist > 0.35) return 'old_growth_taiga'
+      if (temp < 0.05) return 'ice_spikes'
+      return 'snowy_plains'
+    }
+    if (temp < 0.3 && moist > 0.45) return 'taiga'
+
+    // Wet → forest variants
+    if (moist > 0.65) {
+      if (temp < 0.35) return 'dark_forest'
+      if (continent > 0.6) return 'flower_forest'
+      return 'forest'
+    }
+    if (moist > 0.45 && temp > 0.3) {
+      return moist > 0.55 ? 'birch_forest' : 'forest'
+    }
+
+    // Swamp (warm + very wet + low elevation)
+    if (temp > 0.5 && moist > 0.75 && continent < 0.55) {
+      return temp > 0.6 ? 'mangrove_swamp' : 'swamp'
+    }
+
+    // Default: plains
     return 'plains'
-  }
-
-  private getSurface(biome: string): BlockType {
-    switch (biome) {
-      case 'desert': return BlockType.SAND
-      case 'beach': return BlockType.SAND
-      case 'ocean': return BlockType.SAND
-      default: return BlockType.GRASS_BLOCK
-    }
-  }
-
-  private getSubsurface(biome: string): BlockType {
-    switch (biome) {
-      case 'desert': return BlockType.SAND
-      case 'beach': return BlockType.SAND
-      default: return BlockType.DIRT
-    }
   }
 
   /**
@@ -310,6 +385,12 @@ export class WorldGenerator {
       if (diamondNoise > 0.85) return BlockType.DIAMOND_ORE
     }
 
+    // Steel: extremely rare, deepest level, below y=12
+    if (y < 12) {
+      const steelNoise = this.noise3D(worldX * 0.18 + 500, y * 0.18, worldZ * 0.18)
+      if (steelNoise > 0.92) return BlockType.STEEL_ORE
+    }
+
     return BlockType.STONE
   }
 
@@ -324,33 +405,127 @@ export class WorldGenerator {
   }
 
   /**
-   * 放置树木
+   * 放置树木 — supports oak, spruce, birch, jungle, acacia, dark oak.
    */
-  private placeTree(chunk: Chunk, x: number, y: number, z: number): void {
-    const trunkHeight = 4 + Math.floor(Math.random() * 2)
+  private placeTree(chunk: Chunk, x: number, y: number, z: number, type: string): void {
+    switch (type) {
+      case 'spruce':   this.placeSpruceTree(chunk, x, y, z); break
+      case 'birch':    this.placeBirchTree(chunk, x, y, z); break
+      case 'jungle':   this.placeJungleTree(chunk, x, y, z); break
+      case 'acacia':   this.placeAcaciaTree(chunk, x, y, z); break
+      case 'dark_oak': this.placeDarkOakTree(chunk, x, y, z); break
+      default:         this.placeOakTree(chunk, x, y, z); break
+    }
+  }
 
-    // Trunk
-    for (let h = 0; h < trunkHeight; h++) {
-      if (y + h < CHUNK_HEIGHT) {
-        chunk.setBlock(x, y + h, z, BlockType.OAK_LOG)
+  private placeOakTree(chunk: Chunk, x: number, y: number, z: number): void {
+    const trunkH = 4 + Math.floor(Math.random() * 2)
+    for (let h = 0; h < trunkH; h++) {
+      if (y + h < CHUNK_HEIGHT) chunk.setBlock(x, y + h, z, BlockType.OAK_LOG)
+    }
+    const ls = y + trunkH - 2, le = y + trunkH + 1
+    for (let ly = ls; ly <= le; ly++) {
+      const r = ly === le ? 1 : 2
+      for (let lx = -r; lx <= r; lx++) for (let lz = -r; lz <= r; lz++) {
+        if (Math.abs(lx) === r && Math.abs(lz) === r && Math.random() > 0.5) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.OAK_LEAVES)
+        }
       }
     }
+  }
 
-    // Leaves
-    const leafStart = y + trunkHeight - 2
-    const leafEnd = y + trunkHeight + 1
-    for (let ly = leafStart; ly <= leafEnd; ly++) {
-      const radius = ly === leafEnd ? 1 : 2
-      for (let lx = -radius; lx <= radius; lx++) {
-        for (let lz = -radius; lz <= radius; lz++) {
-          if (Math.abs(lx) === radius && Math.abs(lz) === radius && Math.random() > 0.5) continue
-          const bx = x + lx
-          const bz = z + lz
-          if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
-            if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) {
-              chunk.setBlock(bx, ly, bz, BlockType.OAK_LEAVES)
-            }
-          }
+  private placeSpruceTree(chunk: Chunk, x: number, y: number, z: number): void {
+    const trunkH = 6 + Math.floor(Math.random() * 4)
+    for (let h = 0; h < trunkH; h++) {
+      if (y + h < CHUNK_HEIGHT) chunk.setBlock(x, y + h, z, BlockType.SPRUCE_LOG)
+    }
+    // Conical leaf shape
+    for (let ly = y + 1; ly <= y + trunkH + 1; ly++) {
+      const r = Math.max(0, 1 + Math.floor((trunkH - (ly - y)) / 2))
+      for (let lx = -r; lx <= r; lx++) for (let lz = -r; lz <= r; lz++) {
+        if (ly >= CHUNK_HEIGHT) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.SPRUCE_LEAVES)
+        }
+      }
+    }
+  }
+
+  private placeBirchTree(chunk: Chunk, x: number, y: number, z: number): void {
+    const trunkH = 5 + Math.floor(Math.random() * 2)
+    for (let h = 0; h < trunkH; h++) {
+      if (y + h < CHUNK_HEIGHT) chunk.setBlock(x, y + h, z, BlockType.BIRCH_LOG)
+    }
+    const ls = y + trunkH - 2, le = y + trunkH + 1
+    for (let ly = ls; ly <= le; ly++) {
+      const r = ly === le ? 1 : 2
+      for (let lx = -r; lx <= r; lx++) for (let lz = -r; lz <= r; lz++) {
+        if (Math.abs(lx) === r && Math.abs(lz) === r && Math.random() > 0.4) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.BIRCH_LEAVES)
+        }
+      }
+    }
+  }
+
+  private placeJungleTree(chunk: Chunk, x: number, y: number, z: number): void {
+    const trunkH = 8 + Math.floor(Math.random() * 5)
+    for (let h = 0; h < trunkH; h++) {
+      if (y + h < CHUNK_HEIGHT) chunk.setBlock(x, y + h, z, BlockType.JUNGLE_LOG)
+    }
+    // Wide canopy
+    const ls = y + trunkH - 3, le = y + trunkH + 1
+    for (let ly = ls; ly <= le; ly++) {
+      const r = ly >= y + trunkH - 1 ? 2 : 3
+      for (let lx = -r; lx <= r; lx++) for (let lz = -r; lz <= r; lz++) {
+        if (Math.abs(lx) === r && Math.abs(lz) === r && Math.random() > 0.4) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.JUNGLE_LEAVES)
+        }
+      }
+    }
+  }
+
+  private placeAcaciaTree(chunk: Chunk, x: number, y: number, z: number): void {
+    const trunkH = 4 + Math.floor(Math.random() * 3)
+    for (let h = 0; h < trunkH; h++) {
+      if (y + h < CHUNK_HEIGHT) chunk.setBlock(x, y + h, z, BlockType.ACACIA_LOG)
+    }
+    // Flat canopy
+    const ls = y + trunkH - 1, le = y + trunkH + 1
+    for (let ly = ls; ly <= le; ly++) {
+      const r = ly >= y + trunkH ? 3 : 2
+      for (let lx = -r; lx <= r; lx++) for (let lz = -r; lz <= r; lz++) {
+        if (Math.abs(lx) === r && Math.abs(lz) === r && Math.random() > 0.5) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.ACACIA_LEAVES)
+        }
+      }
+    }
+  }
+
+  private placeDarkOakTree(chunk: Chunk, x: number, y: number, z: number): void {
+    // 2×2 trunk
+    const trunkH = 5 + Math.floor(Math.random() * 3)
+    for (let h = 0; h < trunkH; h++) {
+      for (let dx = 0; dx <= 1; dx++) for (let dz = 0; dz <= 1; dz++) {
+        if (y + h < CHUNK_HEIGHT) chunk.setBlock(x + dx, y + h, z + dz, BlockType.DARK_OAK_LOG)
+      }
+    }
+    const ls = y + trunkH - 2, le = y + trunkH + 1
+    for (let ly = ls; ly <= le; ly++) {
+      const r = ly === le ? 1 : 3
+      for (let lx = -r; lx <= r + 1; lx++) for (let lz = -r; lz <= r + 1; lz++) {
+        if (Math.abs(lx) === r + 1 && Math.abs(lz) === r + 1 && Math.random() > 0.4) continue
+        const bx = x + lx, bz = z + lz
+        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+          if (chunk.getBlock(bx, ly, bz) === BlockType.AIR) chunk.setBlock(bx, ly, bz, BlockType.DARK_OAK_LEAVES)
         }
       }
     }

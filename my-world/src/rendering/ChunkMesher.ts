@@ -4,7 +4,7 @@ import { blockFragmentShader } from './shaders/blockFrag'
 import { TextureAtlas } from './TextureAtlas'
 import { CHUNK_SIZE, CHUNK_HEIGHT, ATLAS_SIZE } from '@/utils/constants'
 import { BlockType, getBlockDefinition, isTransparent } from '@/types/blocks'
-import { Chunk } from '@/world/Chunk'
+import type { Chunk } from '@/world/Chunk'
 
 const FACES = [
   { dir: [0, 1, 0], name: 'top', normal: [0, 1, 0],
@@ -32,10 +32,11 @@ export interface ChunkMeshResult {
   transparent: THREE.Mesh | null
 }
 
+type NeighborChunks = { px?: Chunk; nx?: Chunk; pz?: Chunk; nz?: Chunk }
+
 export class ChunkMesher {
   private atlas: TextureAtlas
 
-  // Shared materials
   public opaqueMaterial: THREE.ShaderMaterial
   public transparentMaterial: THREE.ShaderMaterial
 
@@ -46,15 +47,15 @@ export class ChunkMesher {
       atlas: { value: this.atlas.texture },
       atlasSize: { value: ATLAS_SIZE },
       fogColor: { value: new THREE.Color(0x87CEEB) },
-      fogNear: { value: 60.0 },
-      fogFar: { value: 128.0 },
+      fogNear: { value: 48.0 },
+      fogFar: { value: 160.0 },
       sunDirection: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
       sunColor: { value: new THREE.Color(1.0, 0.95, 0.9) },
       ambientLight: { value: 0.5 },
       time: { value: 0.0 },
       pointLightCount: { value: 0 },
-      pointLightPositions: { value: Array.from({ length: 32 }, () => new THREE.Vector3()) },
-      pointLightColors: { value: Array.from({ length: 32 }, () => new THREE.Color()) },
+      pointLightPositions: { value: Array.from({ length: 16 }, () => new THREE.Vector3()) },
+      pointLightColors: { value: Array.from({ length: 16 }, () => new THREE.Color()) },
     }
 
     this.opaqueMaterial = new THREE.ShaderMaterial({
@@ -76,9 +77,6 @@ export class ChunkMesher {
     })
   }
 
-  /**
-   * 更新time uniform（水面动画）
-   */
   update(time: number): void {
     this.opaqueMaterial.uniforms.time.value = time
     this.transparentMaterial.uniforms.time.value = time
@@ -94,7 +92,7 @@ export class ChunkMesher {
   }
 
   updateLights(lights: Array<{ position: THREE.Vector3; color: THREE.Color }>): void {
-    const count = Math.min(32, lights.length)
+    const count = Math.min(16, lights.length)
     for (const material of [this.opaqueMaterial, this.transparentMaterial]) {
       material.uniforms.pointLightCount.value = count
       for (let i = 0; i < count; i++) {
@@ -104,9 +102,91 @@ export class ChunkMesher {
     }
   }
 
-  generateMesh(chunk: Chunk, neighbors: {
-    px?: Chunk; nx?: Chunk; pz?: Chunk; nz?: Chunk
-  }): ChunkMeshResult {
+  // ─── Block lookup across chunk boundaries ───
+
+  private getBlockAt(
+    chunk: Chunk, neighbors: NeighborChunks,
+    wx: number, wy: number, wz: number,
+  ): number {
+    const localX = wx - chunk.chunkX * CHUNK_SIZE
+    const localZ = wz - chunk.chunkZ * CHUNK_SIZE
+
+    if (wy < 0 || wy >= CHUNK_HEIGHT) return BlockType.AIR
+
+    if (localX >= 0 && localX < CHUNK_SIZE && localZ >= 0 && localZ < CHUNK_SIZE) {
+      return chunk.getBlock(localX, wy, localZ)
+    }
+    if (localX < 0 && neighbors.nx) return neighbors.nx.getBlock(CHUNK_SIZE - 1, wy, localZ)
+    if (localX >= CHUNK_SIZE && neighbors.px) return neighbors.px.getBlock(0, wy, localZ)
+    if (localZ < 0 && neighbors.nz) return neighbors.nz.getBlock(localX, wy, CHUNK_SIZE - 1)
+    if (localZ >= CHUNK_SIZE && neighbors.pz) return neighbors.pz.getBlock(localX, wy, 0)
+    return BlockType.AIR
+  }
+
+  private isSolidAO(block: number): boolean {
+    if (block === BlockType.AIR || block === BlockType.BARRIER) return false
+    return !isTransparent(block)
+  }
+
+  // ─── Minecraft-style vertex Ambient Occlusion ───
+
+  /**
+   * For a face vertex at world position (bx,by,bz)+(cx,cy,cz), check the 3 blocks
+   * outside the face that share this vertex and compute an AO value 0..1.
+   * 0 = fully occluded (dark corner), 1 = fully exposed.
+   */
+  private computeAO(
+    chunk: Chunk, neighbors: NeighborChunks,
+    bx: number, by: number, bz: number,   // block world origin
+    nx: number, ny: number, nz: number,    // face normal
+    cx: number, cy: number, cz: number,   // corner coords (each 0 or 1)
+  ): number {
+    // The 8 blocks that share vertex (bx+cx, by+cy, bz+cz) have offsets
+    // dx ∈ {cx-1, cx}, dy ∈ {cy-1, cy}, dz ∈ {cz-1, cz}.
+    // Of these, (0,0,0) is our block and (nx,ny,nz) is the neighbour through the face.
+    // The 3 AO blocks are the remaining three whose coordinate along the face-normal
+    // equals 0 (our block's level, not the neighbour's level).
+    const offsets: [number, number, number][] = []
+    for (const dx of [cx - 1, cx]) {
+      for (const dy of [cy - 1, cy]) {
+        for (const dz of [cz - 1, cz]) {
+          if (dx === 0 && dy === 0 && dz === 0) continue
+          if (dx === nx && dy === ny && dz === nz) continue
+          if ((nx !== 0 && dx !== 0) || (ny !== 0 && dy !== 0) || (nz !== 0 && dz !== 0)) continue
+          offsets.push([dx, dy, dz])
+        }
+      }
+    }
+
+    // Identify side1, side2 (share an edge) and corner (only vertex contact).
+    // A "corner" block is the one where BOTH non-face-normal offsets differ
+    // from our block (which is always at offset 0 for every axis vs. itself).
+    const isCorner = (o: [number, number, number]): boolean => {
+      let nonZero = 0
+      if (nx === 0 && o[0] !== 0) nonZero++
+      if (ny === 0 && o[1] !== 0) nonZero++
+      if (nz === 0 && o[2] !== 0) nonZero++
+      return nonZero === 2
+    }
+
+    let side1 = false, side2 = false, cornerBlock = false
+    for (const o of offsets) {
+      const solid = this.isSolidAO(this.getBlockAt(chunk, neighbors, bx + o[0], by + o[1], bz + o[2]))
+      if (isCorner(o)) cornerBlock = solid
+      else if (!side1) side1 = solid
+      else side2 = solid
+    }
+
+    // Classic MC AO formula
+    if (side1 && side2) return 0.0
+    let ao = 1.0
+    if (side1) ao -= 0.3
+    if (side2) ao -= 0.3
+    if (cornerBlock) ao -= 0.3
+    return Math.max(0.0, ao)
+  }
+
+  generateMesh(chunk: Chunk, neighbors: NeighborChunks, showBarriers = false): ChunkMeshResult {
     // Opaque geometry data
     const oPos: number[] = [], oNorm: number[] = [], oUvs: number[] = [], oIdx: number[] = []
     const oAnim: number[] = [], oShade: number[] = []
@@ -124,8 +204,12 @@ export class ChunkMesher {
           const blockType = chunk.getBlock(x, y, z)
           if (blockType === BlockType.AIR) continue
 
+          // 屏障方块：未手持屏障时不渲染，但仍作为固体参与面剔除
+          if (blockType === BlockType.BARRIER && !showBarriers) continue
+
           const def = getBlockDefinition(blockType)
-          const isBlockTransparent = isTransparent(blockType)
+          // 屏障手持时作为透明方块渲染
+          const isBlockTransparent = blockType === BlockType.BARRIER ? true : isTransparent(blockType)
           const isWater = blockType === BlockType.WATER
           const shapeHeight = blockType === BlockType.REDSTONE_DUST ? 0.025
             : (blockType === BlockType.REPEATER || blockType === BlockType.COMPARATOR ? 0.125 : 1)
@@ -152,13 +236,19 @@ export class ChunkMesher {
 
             // Face culling logic. Keeping transparent faces front-sided and depth-writing
             // prevents the old x-ray effect through glass, leaves and water.
+            // 屏障方块始终视为透明块，不遮挡相邻面
+            const isNeighborBarrier = neighborBlock === BlockType.BARRIER
+            const neighborOpaque = isNeighborBarrier
+              ? false  // 屏障永远不遮挡相邻面（像空气一样透明）
+              : (neighborBlock !== BlockType.AIR && !isTransparent(neighborBlock))
+
             if (!isBlockTransparent) {
               // Opaque block: skip face if neighbor is opaque
-              if (neighborBlock !== BlockType.AIR && !isTransparent(neighborBlock)) continue
+              if (neighborOpaque) continue
             } else {
               // Transparent block: skip face if neighbor is same type, or is opaque
               if (neighborBlock === blockType) continue
-              if (neighborBlock !== BlockType.AIR && !isTransparent(neighborBlock)) continue
+              if (neighborOpaque) continue
             }
 
             // Get texture index
@@ -186,15 +276,18 @@ export class ChunkMesher {
             const targetNorm = isBlockTransparent ? tNorm : oNorm
             const targetUvs = isBlockTransparent ? tUvs : oUvs
             const targetIdx = isBlockTransparent ? tIdx : oIdx
-            const targetShade = isBlockTransparent ? tShade : oShade
+            const targetAO = isBlockTransparent ? tShade : oShade
             let vertCount = isBlockTransparent ? tVert : oVert
+
+            // World origin of the current block
+            const bx = chunk.chunkX * CHUNK_SIZE + x
+            const bz = chunk.chunkZ * CHUNK_SIZE + z
 
             const inset = 0.001
             for (let i = 0; i < 4; i++) {
               const corner = face.corners[i]
               const faceUv = face.uvs[i]
 
-              // Water surface: lower the top face slightly for visual effect
               let py = y + corner[1] * shapeHeight
               if (isWater && face.name === 'top') {
                 py = y + 0.85
@@ -212,18 +305,22 @@ export class ChunkMesher {
                 atlasV + (centerV - atlasV) * inset * 100,
               )
 
-              // Track water faces for animation
               if (isBlockTransparent) {
                 tAnim.push(isWater ? 1.0 : 0.0)
               } else {
                 oAnim.push(0.0)
               }
 
-              // A subtle per-vertex contact shade makes cube edges and corners readable
-              // without adding expensive extra geometry.
-              const verticalShade = corner[1] === 0 ? 0.9 : 1.0
-              const edgeShade = ((corner[0] + corner[2]) % 2 === 0) ? 0.94 : 1.0
-              targetShade.push(verticalShade * edgeShade)
+              // Minecraft-style vertex AO
+              const ao = isBlockTransparent
+                ? 1.0 // transparent blocks don't receive AO
+                : this.computeAO(
+                    chunk, neighbors,
+                    bx, y, bz,
+                    face.dir[0], face.dir[1], face.dir[2],
+                    corner[0], corner[1], corner[2],
+                  )
+              targetAO.push(ao)
             }
 
             // The four vertical face definitions are ordered clockwise when seen
@@ -261,7 +358,7 @@ export class ChunkMesher {
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(oNorm, 3))
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(oUvs, 2))
       geo.setAttribute('animFlag', new THREE.Float32BufferAttribute(oAnim, 1))
-      geo.setAttribute('vertexShade', new THREE.Float32BufferAttribute(oShade, 1))
+      geo.setAttribute('ao', new THREE.Float32BufferAttribute(oShade, 1))
       geo.setIndex(oIdx)
       opaqueMesh = new THREE.Mesh(geo, this.opaqueMaterial)
       opaqueMesh.position.copy(offset)
@@ -276,7 +373,7 @@ export class ChunkMesher {
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(tNorm, 3))
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(tUvs, 2))
       geo.setAttribute('animFlag', new THREE.Float32BufferAttribute(tAnim, 1))
-      geo.setAttribute('vertexShade', new THREE.Float32BufferAttribute(tShade, 1))
+      geo.setAttribute('ao', new THREE.Float32BufferAttribute(tShade, 1))
       geo.setIndex(tIdx)
       transparentMesh = new THREE.Mesh(geo, this.transparentMaterial)
       transparentMesh.position.copy(offset)

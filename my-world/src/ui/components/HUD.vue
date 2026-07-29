@@ -3,6 +3,9 @@
     <!-- Underwater overlay -->
     <div v-if="playerStore.isUnderwater" class="underwater-overlay"></div>
 
+    <!-- Weather atmosphere overlay -->
+    <div v-if="playerStore.weather !== 'clear'" class="weather-overlay" :class="playerStore.weather"></div>
+
     <!-- Crosshair -->
     <div class="crosshair">
       <div class="crosshair-h"></div>
@@ -25,7 +28,11 @@
       <span class="mode-badge" :class="playerStore.gameMode">
         {{ playerStore.gameMode === 'creative' ? '创造模式' : '生存模式' }}
       </span>
+      <span v-if="playerStore.canUseCommandBlocks" class="cheat-badge cheat-on">🔓 作弊</span>
+      <span v-else-if="playerStore.gameMode === 'creative'" class="cheat-badge cheat-off">🔒 作弊</span>
       <span v-if="playerStore.isFlying" class="fly-badge">飞行中</span>
+      <span class="weather-badge">{{ weatherEmoji }} {{ weatherLabel }}</span>
+      <span class="biome-badge">{{ playerStore.biome }}</span>
       <span class="time-badge">{{ formattedTime }} · {{ isNight ? '夜晚' : '白天' }}</span>
     </div>
 
@@ -57,7 +64,7 @@
 
     <!-- Controls hint -->
     <div class="controls-hint">
-      G: 切换模式 | 双击空格: 飞行 | F2: 保存
+      G: 模式 | F: 作弊 | V: 视角 | Y: 天气 | R: 手机/PC | H: 保存 | 双击空格: 飞行
     </div>
 
     <!-- Save status notification -->
@@ -85,6 +92,15 @@ watch(() => playerStore.breakToolName, (name) => {
 })
 
 const isNight = computed(() => playerStore.timeOfDay < 0.23 || playerStore.timeOfDay > 0.77)
+
+const weatherEmoji = computed(() => {
+  const map: Record<string, string> = { clear: '☀', rain: '🌧', snow: '❄', thunder: '⛈' }
+  return map[playerStore.weather] ?? '☀'
+})
+const weatherLabel = computed(() => {
+  const map: Record<string, string> = { clear: '晴', rain: '雨', snow: '雪', thunder: '雷暴' }
+  return map[playerStore.weather] ?? '晴'
+})
 const formattedTime = computed(() => {
   const totalMinutes = Math.floor(playerStore.timeOfDay * 24 * 60)
   const hours = Math.floor(totalMinutes / 60).toString().padStart(2, '0')
@@ -117,6 +133,23 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   background: rgba(20, 60, 120, 0.35);
   pointer-events: none;
   z-index: 5;
+}
+
+.weather-overlay {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 4;
+  transition: background 2s ease;
+}
+.weather-overlay.rain {
+  background: rgba(30, 45, 65, 0.15);
+}
+.weather-overlay.snow {
+  background: rgba(180, 195, 210, 0.12);
+}
+.weather-overlay.thunder {
+  background: rgba(10, 15, 30, 0.25);
 }
 
 .crosshair {
@@ -200,12 +233,48 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   border-radius: 3px;
   text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
 }
+.cheat-badge {
+  padding: 4px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px; font-weight: bold;
+  border-radius: 3px;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
+.cheat-badge.cheat-on {
+  background: rgba(60, 180, 60, 0.7);
+  color: #d0ffd0;
+}
+.cheat-badge.cheat-off {
+  background: rgba(180, 60, 60, 0.7);
+  color: #ffd0d0;
+}
 .time-badge {
   padding: 4px 10px;
   background: rgba(20, 30, 55, 0.72);
   color: #e8ecff;
   font-family: 'Courier New', monospace;
   font-size: 13px;
+  font-weight: bold;
+  border-radius: 3px;
+  text-shadow: 1px 1px 0 #000;
+}
+.weather-badge {
+  padding: 4px 10px;
+  background: rgba(20, 40, 70, 0.72);
+  color: #e8f0ff;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  border-radius: 3px;
+  text-shadow: 1px 1px 0 #000;
+  letter-spacing: 1px;
+}
+.biome-badge {
+  padding: 4px 10px;
+  background: rgba(30, 60, 30, 0.72);
+  color: #b8e8b8;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
   font-weight: bold;
   border-radius: 3px;
   text-shadow: 1px 1px 0 #000;
@@ -291,5 +360,55 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 @keyframes fadeIn {
   from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── 横屏适配 ── */
+@media (orientation: landscape), (max-height: 500px) {
+  .mode-indicator {
+    top: 4px; right: 4px;
+    gap: 4px;
+  }
+  .mode-badge, .fly-badge, .cheat-badge, .time-badge, .weather-badge, .biome-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .health-bar {
+    bottom: 52px;
+  }
+  .heart { font-size: 13px; }
+
+  .oxygen-bar {
+    bottom: 68px;
+  }
+  .bubble { font-size: 13px; }
+
+  .hotbar {
+    bottom: 8px;
+    padding: 2px;
+    gap: 1px;
+  }
+  .hotbar-slot {
+    width: 38px; height: 38px;
+  }
+  .item-icon {
+    width: 28px; height: 28px;
+  }
+  .item-name { font-size: 8px; }
+  .item-count { font-size: 10px; }
+  .slot-number { font-size: 8px; }
+
+  .controls-hint {
+    display: none;
+  }
+
+  .mining-progress {
+    min-width: 120px;
+  }
+  .mining-bar-bg {
+    height: 4px;
+  }
+  .mining-tool { font-size: 9px; }
+  .mining-warning { font-size: 8px; }
 }
 </style>

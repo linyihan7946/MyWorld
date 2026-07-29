@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { BlockType } from '@/types/blocks'
 import { ITEM_REGISTRY } from '@/types/items'
+import { getEnchantLevel } from '@/gameplay/EnchantmentSystem'
 
 export interface InventorySlot {
   item: string | null
@@ -9,11 +10,14 @@ export interface InventorySlot {
   blockType?: BlockType
   /** 工具已消耗的耐久点数 */
   durabilityDamage?: number
+  /** 附魔 { enchantId: level } */
+  enchantments?: Record<string, number>
 }
 
 export interface ArmorSlot {
   item: string | null
   slotType: 'helmet' | 'chestplate' | 'leggings' | 'boots'
+  enchantments?: Record<string, number>
 }
 
 const emptySlot = (): InventorySlot => ({ item: null, count: 0 })
@@ -31,6 +35,19 @@ const CREATIVE_BLOCKS: { item: string; blockType: BlockType }[] = [
   { item: 'stone_bricks', blockType: BlockType.STONE_BRICKS },
 ]
 
+// === 指令专属方块 (需要创造模式+作弊) ===
+const COMMAND_EXCLUSIVE_BLOCKS: { item: string; blockType: BlockType }[] = [
+  { item: 'command_block', blockType: BlockType.COMMAND_BLOCK },
+  { item: 'chain_command_block', blockType: BlockType.CHAIN_COMMAND_BLOCK },
+  { item: 'repeat_command_block', blockType: BlockType.REPEAT_COMMAND_BLOCK },
+  { item: 'barrier', blockType: BlockType.BARRIER },
+  { item: 'structure_block', blockType: BlockType.STRUCTURE_BLOCK },
+  { item: 'jigsaw_block', blockType: BlockType.JIGSAW_BLOCK },
+  { item: 'light_block', blockType: BlockType.LIGHT_BLOCK },
+  { item: 'structure_void', blockType: BlockType.STRUCTURE_VOID },
+  { item: 'debug_stick', blockType: BlockType.AIR }, // 调试棒不是方块
+]
+
 export const useInventoryStore = defineStore('inventory', () => {
   // Survival mode: start with empty hotbar
   const hotbar = ref<InventorySlot[]>(Array.from({ length: 9 }, emptySlot))
@@ -44,6 +61,11 @@ export const useInventoryStore = defineStore('inventory', () => {
 
   const selectedSlot = ref(0)
   const showInventory = ref(false)
+
+  /** Whether the player is wearing a full set of steel armor. */
+  const hasFullSteelArmor = computed(() =>
+    armor.value.every(s => s.item?.startsWith('steel_'))
+  )
 
   function selectSlot(slot: number) {
     selectedSlot.value = Math.max(0, Math.min(8, slot))
@@ -127,11 +149,15 @@ export const useInventoryStore = defineStore('inventory', () => {
       golden_helmet: 2, golden_chestplate: 5, golden_leggings: 3, golden_boots: 1,
       diamond_helmet: 3, diamond_chestplate: 8, diamond_leggings: 6, diamond_boots: 3,
       netherite_helmet: 3, netherite_chestplate: 8, netherite_leggings: 6, netherite_boots: 3,
+      steel_helmet: 4, steel_chestplate: 9, steel_leggings: 7, steel_boots: 4,
     }
     let total = 0
     for (const slot of armor.value) {
       if (slot.item && armorPoints[slot.item]) {
         total += armorPoints[slot.item]
+        // Protection enchantment: +0.5 armor per level per piece
+        const protLvl = getEnchantLevel(slot.enchantments, 'protection')
+        if (protLvl > 0) total += protLvl * 0.5
       }
     }
     return total
@@ -150,6 +176,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       golden_leggings: 'leggings', diamond_leggings: 'leggings', netherite_leggings: 'leggings',
       leather_boots: 'boots', chainmail_boots: 'boots', iron_boots: 'boots',
       golden_boots: 'boots', diamond_boots: 'boots', netherite_boots: 'boots',
+      steel_helmet: 'helmet', steel_chestplate: 'chestplate', steel_leggings: 'leggings', steel_boots: 'boots',
     }
 
     const slotType = armorTypeMap[itemId]
@@ -163,5 +190,10 @@ export const useInventoryStore = defineStore('inventory', () => {
     return false
   }
 
-  return { hotbar, mainInventory, armor, selectedSlot, showInventory, selectSlot, addToHotbar, addItem, removeFromSelected, setCreativeInventory, setSurvivalInventory, getArmorDefense, equipArmor }
+  /** 获取指令专属物品列表 (创造+作弊可见) */
+  function getCommandExclusiveBlocks() {
+    return COMMAND_EXCLUSIVE_BLOCKS
+  }
+
+  return { hotbar, mainInventory, armor, selectedSlot, showInventory, selectSlot, addToHotbar, addItem, removeFromSelected, setCreativeInventory, setSurvivalInventory, getArmorDefense, equipArmor, hasFullSteelArmor, getCommandExclusiveBlocks }
 })

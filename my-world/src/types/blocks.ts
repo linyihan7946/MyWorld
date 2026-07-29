@@ -335,6 +335,23 @@ export enum BlockType {
   OBSERVER = 385,
   HOPPER = 386,
   PISTON_HEAD = 387,
+
+  // === 指令专属方块 (创造模式+作弊) ===
+  COMMAND_BLOCK = 400,          // 脉冲命令方块 (橙色)
+  CHAIN_COMMAND_BLOCK = 401,    // 连锁命令方块 (绿色)
+  REPEAT_COMMAND_BLOCK = 402,   // 循环命令方块 (紫色)
+  BARRIER = 403,                // 屏障 (隐形不可破坏)
+  STRUCTURE_BLOCK = 404,        // 结构方块 (青色)
+  JIGSAW_BLOCK = 405,           // 拼图方块 (黄色)
+  LIGHT_BLOCK = 406,            // 光源方块 (可调亮度)
+  STRUCTURE_VOID = 407,         // 结构空位 (半透明)
+  STEEL_ORE = 408,              // 钢矿石 (最稀有)
+  STEEL_BLOCK = 409,            // 钢块
+
+  // === 传送门 ===
+  NETHER_PORTAL = 410,          // 地狱传送门（紫色漩涡）
+  END_PORTAL = 411,             // 末地传送门（星空表面）
+  END_PORTAL_FRAME = 412,       // 末地传送门框架
 }
 
 /**
@@ -353,6 +370,7 @@ export interface BlockDefinition {
     side?: number
     all?: number // 如果所有面共用一张纹理
   }
+  commandExclusive?: boolean // 是否指令专属(创造+作弊才能获取)
 }
 
 /**
@@ -692,6 +710,25 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.OBSERVER]: { id: BlockType.OBSERVER, name: '侦测器', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 202 } },
   [BlockType.HOPPER]: { id: BlockType.HOPPER, name: '漏斗', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 203 } },
   [BlockType.PISTON_HEAD]: { id: BlockType.PISTON_HEAD, name: '活塞头', solid: true, transparent: false, breakable: true, hardness: 2, textures: { all: 197 } },
+
+  // === 指令专属方块 (创造模式+作弊才能获取) ===
+  [BlockType.COMMAND_BLOCK]: { id: BlockType.COMMAND_BLOCK, name: '命令方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 210 }, commandExclusive: true },
+  [BlockType.CHAIN_COMMAND_BLOCK]: { id: BlockType.CHAIN_COMMAND_BLOCK, name: '连锁命令方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 211 }, commandExclusive: true },
+  [BlockType.REPEAT_COMMAND_BLOCK]: { id: BlockType.REPEAT_COMMAND_BLOCK, name: '循环命令方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 212 }, commandExclusive: true },
+  [BlockType.BARRIER]: { id: BlockType.BARRIER, name: '屏障', solid: true, transparent: true, breakable: false, hardness: Infinity, textures: { all: 213 }, commandExclusive: true },
+  [BlockType.STRUCTURE_BLOCK]: { id: BlockType.STRUCTURE_BLOCK, name: '结构方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 214 }, commandExclusive: true },
+  [BlockType.JIGSAW_BLOCK]: { id: BlockType.JIGSAW_BLOCK, name: '拼图方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 215 }, commandExclusive: true },
+  [BlockType.LIGHT_BLOCK]: { id: BlockType.LIGHT_BLOCK, name: '光源方块', solid: false, transparent: true, breakable: true, hardness: 1, textures: { all: 216 }, commandExclusive: true },
+  [BlockType.STRUCTURE_VOID]: { id: BlockType.STRUCTURE_VOID, name: '结构空位', solid: false, transparent: true, breakable: true, hardness: 1, textures: { all: 217 }, commandExclusive: true },
+
+  // Steel (custom — rarest ore, best gear)
+  [BlockType.STEEL_ORE]: { id: BlockType.STEEL_ORE, name: '钢矿石', solid: true, transparent: false, breakable: true, hardness: 15, textures: { all: 218 } },
+  [BlockType.STEEL_BLOCK]: { id: BlockType.STEEL_BLOCK, name: '钢块', solid: true, transparent: false, breakable: true, hardness: 15, textures: { all: 219 } },
+
+  // === 传送门 ===
+  [BlockType.NETHER_PORTAL]: { id: BlockType.NETHER_PORTAL, name: '地狱传送门', solid: false, transparent: true, breakable: false, hardness: Infinity, textures: { all: 220 } },
+  [BlockType.END_PORTAL]: { id: BlockType.END_PORTAL, name: '末地传送门', solid: false, transparent: true, breakable: false, hardness: Infinity, textures: { all: 221 } },
+  [BlockType.END_PORTAL_FRAME]: { id: BlockType.END_PORTAL_FRAME, name: '末地传送门框架', solid: true, transparent: false, breakable: false, hardness: Infinity, textures: { all: 222 } },
 }
 
 export function getBlockDefinition(type: BlockType): BlockDefinition {

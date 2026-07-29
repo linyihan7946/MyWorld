@@ -10,7 +10,7 @@ export interface ItemDefinition {
   damage?: number
   durability?: number
   toolType?: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'sword'
-  toolLevel?: 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'netherite'
+  toolLevel?: 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'netherite' | 'steel'
   miningSpeed?: number
   armorType?: 'helmet' | 'chestplate' | 'leggings' | 'boots'
   armorPoints?: number
@@ -281,6 +281,22 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   diamond_sword: { id: 'diamond_sword', name: '钻石剑', type: 'weapon', stackSize: 1, damage: 7, durability: 1562, toolType: 'sword', toolLevel: 'diamond' },
   netherite_sword: { id: 'netherite_sword', name: '下界合金剑', type: 'weapon', stackSize: 1, damage: 8, durability: 2032, toolType: 'sword', toolLevel: 'netherite' },
 
+  // === Steel (custom — rarest, most powerful) ===
+  steel_ore: { id: 'steel_ore', name: '钢矿石', type: 'block', stackSize: 64 },
+  steel_ingot: { id: 'steel_ingot', name: '钢锭', type: 'material', stackSize: 64 },
+  steel_block: { id: 'steel_block', name: '钢块', type: 'block', stackSize: 64 },
+
+  steel_pickaxe: { id: 'steel_pickaxe', name: '钢镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'steel', durability: 3100, miningSpeed: 12 },
+  steel_axe:     { id: 'steel_axe', name: '钢斧', type: 'tool', stackSize: 1, damage: 11, durability: 3100, toolType: 'axe', toolLevel: 'steel', miningSpeed: 11 },
+  steel_shovel:  { id: 'steel_shovel', name: '钢铲', type: 'tool', stackSize: 1, damage: 6, durability: 3100, toolType: 'shovel', toolLevel: 'steel', miningSpeed: 11 },
+  steel_hoe:     { id: 'steel_hoe', name: '钢锄', type: 'tool', stackSize: 1, damage: 2, durability: 3100, toolType: 'hoe', toolLevel: 'steel' },
+  steel_sword:   { id: 'steel_sword', name: '钢剑', type: 'weapon', stackSize: 1, damage: 10, durability: 3100, toolType: 'sword', toolLevel: 'steel' },
+
+  steel_helmet:     { id: 'steel_helmet', name: '钢头盔', type: 'armor', stackSize: 1, armorType: 'helmet', armorPoints: 4, durability: 550 },
+  steel_chestplate:  { id: 'steel_chestplate', name: '钢胸甲', type: 'armor', stackSize: 1, armorType: 'chestplate', armorPoints: 9, durability: 750 },
+  steel_leggings:   { id: 'steel_leggings', name: '钢护腿', type: 'armor', stackSize: 1, armorType: 'leggings', armorPoints: 7, durability: 700 },
+  steel_boots:      { id: 'steel_boots', name: '钢靴子', type: 'armor', stackSize: 1, armorType: 'boots', armorPoints: 4, durability: 600 },
+
   // === Weapons: Ranged ===
   bow: { id: 'bow', name: '弓', type: 'weapon', stackSize: 1, durability: 385 },
   crossbow: { id: 'crossbow', name: '弩', type: 'weapon', stackSize: 1, durability: 465 },
@@ -375,6 +391,22 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   lantern: { id: 'lantern', name: '灯笼', type: 'block', stackSize: 64 },
   soul_lantern: { id: 'soul_lantern', name: '灵魂灯笼', type: 'block', stackSize: 64 },
   ladder: { id: 'ladder', name: '梯子', type: 'block', stackSize: 64 },
+
+  // === 指令专属物品 (创造模式+作弊) ===
+  command_block: { id: 'command_block', name: '命令方块', type: 'block', stackSize: 64 },
+  chain_command_block: { id: 'chain_command_block', name: '连锁命令方块', type: 'block', stackSize: 64 },
+  repeat_command_block: { id: 'repeat_command_block', name: '循环命令方块', type: 'block', stackSize: 64 },
+  barrier: { id: 'barrier', name: '屏障', type: 'block', stackSize: 64 },
+  structure_block: { id: 'structure_block', name: '结构方块', type: 'block', stackSize: 64 },
+  jigsaw_block: { id: 'jigsaw_block', name: '拼图方块', type: 'block', stackSize: 64 },
+  light_block: { id: 'light_block', name: '光源方块', type: 'block', stackSize: 64 },
+  structure_void: { id: 'structure_void', name: '结构空位', type: 'block', stackSize: 64 },
+
+  // 调试棒 (工具 - 翻转方块状态)
+  debug_stick: { id: 'debug_stick', name: '调试棒', type: 'tool', stackSize: 1 },
+
+  // === 附魔书 ===
+  enchanted_book: { id: 'enchanted_book', name: '附魔书', type: 'utility', stackSize: 1 },
 }
 
 export function getItemDefinition(id: string): ItemDefinition | undefined {

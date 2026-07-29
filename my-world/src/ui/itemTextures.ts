@@ -786,6 +786,7 @@ const TIER_HEAD: Record<string, { H: string; S: string }> = {
   gold:      { H: '#FCDB4D', S: '#C8A830' },
   diamond:   { H: '#5DECF0', S: '#30B0B8' },
   netherite: { H: '#3A3238', S: '#201A20' },
+  steel:     { H: '#C0CCDA', S: '#8A9AAE' },
 }
 
 const ARMOR_COLORS: Record<string, { H: string; S: string }> = {
@@ -795,6 +796,7 @@ const ARMOR_COLORS: Record<string, { H: string; S: string }> = {
   gold:      { H: '#FCDB4D', S: '#C0A030' },
   diamond:   { H: '#5DECF0', S: '#30A0A8' },
   netherite: { H: '#3A3238', S: '#201A20' },
+  steel:     { H: '#C0CCDA', S: '#8A9AAE' },
 }
 
 const GUARD_COLOR = '#6B5030'
@@ -811,7 +813,7 @@ export function getItemIconDataUrl(itemId: string): string | null {
 
 function generateIcon(itemId: string): string | null {
   // ── Tools (pickaxe, axe, shovel, hoe) ──
-  const toolMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite)_(pickaxe|axe|shovel|hoe)$/)
+  const toolMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite|steel)_(pickaxe|axe|shovel|hoe)$/)
   if (toolMatch) {
     const level = toolMatch[1] === 'wooden' ? 'wood' : toolMatch[1]
     const kind = toolMatch[2]
@@ -838,7 +840,7 @@ function generateIcon(itemId: string): string | null {
   }
 
   // ── Swords ──
-  const swordMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite)_sword$/)
+  const swordMatch = itemId.match(/^(wooden|stone|iron|gold|diamond|netherite|steel)_sword$/)
   if (swordMatch) {
     const level = swordMatch[1] === 'wooden' ? 'wood' : swordMatch[1]
     const tier = TIER_HEAD[level]
@@ -888,7 +890,7 @@ function generateIcon(itemId: string): string | null {
   }
 
   // ── Armor ──
-  const armorMatch = itemId.match(/^(leather|chainmail|iron|golden|diamond|netherite)_(helmet|chestplate|leggings|boots)$/)
+  const armorMatch = itemId.match(/^(leather|chainmail|iron|golden|diamond|netherite|steel)_(helmet|chestplate|leggings|boots)$/)
   if (armorMatch) {
     let rawType = armorMatch[1]
     const kind = armorMatch[2]
@@ -913,6 +915,7 @@ function generateIcon(itemId: string): string | null {
     copper_ingot:    { H: '#E09060', M: '#C07040', S: '#905030' },
     netherite_ingot: { H: '#504048', M: '#3A3238', S: '#201A20' },
     netherite_scrap: { H: '#504048', M: '#3A3238', S: '#201A20' },
+    steel_ingot:     { H: '#D8E0EC', M: '#C0CCDA', S: '#8A9AAE' },
     brick_item:      { H: '#C07050', M: '#A05840', S: '#804030' },
     charcoal:        { H: '#484848', M: '#2A2A2A', S: '#181818' },
   }
@@ -1459,6 +1462,47 @@ function generateIcon(itemId: string): string | null {
   // ── Utility: name tag ──
   if (itemId === 'name_tag') {
     return generateDataUrl(NAMETAG_TPL, { H: '#8B6B3D', W: '#F0F0E0', G: '#D0D0C0' })
+  }
+
+  // ── Enchanted book ──
+  if (itemId === 'enchanted_book') {
+    const canvas = document.createElement('canvas')
+    canvas.width = ICON_SIZE
+    canvas.height = ICON_SIZE
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, ICON_SIZE, ICON_SIZE)
+    // Closed book with magical glow
+    drawPixels(ctx, [
+      // Book cover
+      [3, 2, '#602020'], [4, 2, '#602020'], [5, 2, '#602020'], [6, 2, '#602020'],
+      [7, 2, '#602020'], [8, 2, '#602020'], [9, 2, '#602020'], [10, 2, '#602020'],
+      [11, 2, '#602020'], [12, 2, '#602020'],
+      [3, 3, '#803030'], [4, 3, '#803030'], [5, 3, '#803030'], [6, 3, '#803030'],
+      [7, 3, '#803030'], [8, 3, '#803030'], [9, 3, '#803030'], [10, 3, '#803030'],
+      [11, 3, '#803030'], [12, 3, '#803030'],
+      // Pages
+      [4, 4, '#F8F0D0'], [5, 4, '#F8F0D0'], [6, 4, '#F8F0D0'],
+      [7, 4, '#F8F0D0'], [8, 4, '#F8F0D0'], [9, 4, '#F8F0D0'],
+      [4, 5, '#F0E8C8'], [5, 5, '#F0E8C8'], [6, 5, '#F0E8C8'],
+      [7, 5, '#D8C8A0'], [8, 5, '#F0E8C8'], [9, 5, '#F0E8C8'],
+      [4, 6, '#E8E0C0'], [5, 6, '#E8E0C0'], [6, 6, '#E8E0C0'],
+      [7, 6, '#E8E0C0'], [8, 6, '#E8E0C0'], [9, 6, '#E8E0C0'],
+      [4, 7, '#F8F0D0'], [5, 7, '#F8F0D0'], [6, 7, '#F8F0D0'],
+      [7, 7, '#F8F0D0'], [8, 7, '#F8F0D0'], [9, 7, '#F8F0D0'],
+      [4, 8, '#F0E8C8'], [5, 8, '#F0E8C8'], [6, 8, '#F0E8C8'],
+      [7, 8, '#F0E8C8'], [8, 8, '#F0E8C8'], [9, 8, '#F0E8C8'],
+      // Enchanted glow (cyan particles)
+      [5, 3, '#88FFFF'], [6, 9, '#88FFFF'], [12, 5, '#88FFFF'],
+      [3, 4, '#AAFFFF'], [11, 8, '#AAFFFF'], [8, 2, '#CCFFFF'],
+      // Spine
+      [2, 2, '#401010'], [2, 3, '#401010'], [2, 4, '#401010'],
+      [2, 5, '#401010'], [2, 6, '#401010'], [2, 7, '#401010'],
+      [2, 8, '#401010'], [2, 9, '#401010'],
+      // Bottom cover
+      [4, 9, '#803030'], [5, 9, '#803030'], [6, 9, '#803030'],
+      [7, 9, '#803030'], [8, 9, '#803030'], [9, 9, '#803030'],
+    ])
+    return canvas.toDataURL('image/png')
   }
 
   return null

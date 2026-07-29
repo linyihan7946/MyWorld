@@ -1,7 +1,7 @@
 // Game Constants
 export const CHUNK_SIZE = 16
 export const CHUNK_HEIGHT = 256
-export const RENDER_DISTANCE = 8
+export const RENDER_DISTANCE = 6
 export const BLOCK_SIZE = 1
 
 // Physics
@@ -28,4 +28,4 @@ export const MOUSE_SENSITIVITY = 0.002
 
 // Texture atlas
 export const ATLAS_SIZE = 16 // 16x16 grid of textures
-export const TEXTURE_RESOLUTION = 16 // Each texture is 16x16 pixels
+export const TEXTURE_RESOLUTION = 32 // Each texture is 32x32 pixels

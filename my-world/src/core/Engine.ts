@@ -5,6 +5,9 @@ import { CameraManager } from '@/rendering/Camera'
 import { TextureAtlas } from '@/rendering/TextureAtlas'
 import { ChunkMesher } from '@/rendering/ChunkMesher'
 import { Sky } from '@/rendering/Sky'
+import { CloudSystem } from '@/rendering/CloudSystem'
+import { WeatherSystem, type WeatherType } from '@/rendering/WeatherSystem'
+import { WeatherAudio } from '@/rendering/WeatherAudio'
 import { InputManager } from '@/input/InputManager'
 import { WorldGenerator } from '@/world/WorldGenerator'
 import { ChunkManager } from '@/world/ChunkManager'
@@ -12,7 +15,7 @@ import { PhysicsEngine } from '@/physics/PhysicsEngine'
 import { BlockInteraction } from '@/gameplay/BlockInteraction'
 import { RedstoneSystem } from '@/gameplay/RedstoneSystem'
 import { SaveSystem } from '@/gameplay/SaveSystem'
-import { BlockType } from '@/types/blocks'
+import { BlockType, BLOCK_REGISTRY } from '@/types/blocks'
 import { PLAYER_SPEED, PLAYER_SPRINT_SPEED, JUMP_VELOCITY, MOUSE_SENSITIVITY, PLAYER_WIDTH, PLAYER_HEIGHT, GRAVITY } from '@/utils/constants'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { usePlayerStore } from '@/ui/stores/playerStore'
@@ -20,7 +23,17 @@ import { ITEM_REGISTRY, getItemDefinition } from '@/types/items'
 import { EntityManager } from '@/entities/EntityManager'
 import { Animal, type AnimalKind } from '@/entities/characters/Animal'
 import { Zombie } from '@/entities/characters/Zombie'
+import { Steve } from '@/entities/characters/Steve'
 import { useContainerStore } from '@/ui/stores/containerStore'
+import { useUIStore } from '@/ui/stores/uiStore'
+import {
+  debugStickUse, toggleLightBlock, isDebuggable,
+  getCommand, setCommand, isCommandAlwaysOn, isCommandConditional,
+  executeCommand, getLightLevel, setBlockState, getBlockStateValue
+} from '@/gameplay/BlockStateSystem'
+import { getEnchantLevel } from '@/gameplay/EnchantmentSystem'
+import { PortalSystem, type Dimension } from '@/gameplay/PortalSystem'
+import { BIOMES } from '@/world/BiomeRegistry'
 
 const ITEM_TO_BLOCK: Record<string, BlockType> = {
   // Basic blocks
@@ -136,6 +149,18 @@ const ITEM_TO_BLOCK: Record<string, BlockType> = {
 
   // Terracotta
   terracotta: BlockType.TERRACOTTA,
+
+  // === 指令专属方块 ===
+  command_block: BlockType.COMMAND_BLOCK,
+  chain_command_block: BlockType.CHAIN_COMMAND_BLOCK,
+  repeat_command_block: BlockType.REPEAT_COMMAND_BLOCK,
+  barrier: BlockType.BARRIER,
+  structure_block: BlockType.STRUCTURE_BLOCK,
+  jigsaw_block: BlockType.JIGSAW_BLOCK,
+  light_block: BlockType.LIGHT_BLOCK,
+  structure_void: BlockType.STRUCTURE_VOID,
+  steel_ore: BlockType.STEEL_ORE,
+  steel_block: BlockType.STEEL_BLOCK,
 }
 
 /**
@@ -148,6 +173,7 @@ const ITEM_DISPLAY_BLOCK: Record<string, BlockType> = {
   emerald: BlockType.EMERALD_BLOCK, lapis_lazuli: BlockType.LAPIS_BLOCK,
   redstone: BlockType.REDSTONE_BLOCK, quartz: BlockType.QUARTZ_BLOCK,
   netherite_ingot: BlockType.NETHERITE_BLOCK, netherite_scrap: BlockType.NETHERRACK,
+  steel_ingot: BlockType.STEEL_BLOCK, steel_ore: BlockType.STEEL_ORE,
   copper_ingot: BlockType.COPPER_BLOCK, charcoal: BlockType.COAL_ORE,
   // 基础材料
   stick: BlockType.OAK_PLANKS, flint: BlockType.GRAVEL,
@@ -165,19 +191,24 @@ const ITEM_DISPLAY_BLOCK: Record<string, BlockType> = {
   wooden_pickaxe: BlockType.OAK_PLANKS, stone_pickaxe: BlockType.COBBLESTONE,
   iron_pickaxe: BlockType.IRON_BLOCK, gold_pickaxe: BlockType.GOLD_BLOCK,
   diamond_pickaxe: BlockType.DIAMOND_BLOCK, netherite_pickaxe: BlockType.NETHERITE_BLOCK,
+  steel_pickaxe: BlockType.STEEL_BLOCK,
   wooden_axe: BlockType.OAK_PLANKS, stone_axe: BlockType.COBBLESTONE,
   iron_axe: BlockType.IRON_BLOCK, gold_axe: BlockType.GOLD_BLOCK,
   diamond_axe: BlockType.DIAMOND_BLOCK, netherite_axe: BlockType.NETHERITE_BLOCK,
+  steel_axe: BlockType.STEEL_BLOCK,
   wooden_shovel: BlockType.OAK_PLANKS, stone_shovel: BlockType.COBBLESTONE,
   iron_shovel: BlockType.IRON_BLOCK, gold_shovel: BlockType.GOLD_BLOCK,
   diamond_shovel: BlockType.DIAMOND_BLOCK, netherite_shovel: BlockType.NETHERITE_BLOCK,
+  steel_shovel: BlockType.STEEL_BLOCK,
   wooden_hoe: BlockType.OAK_PLANKS, stone_hoe: BlockType.COBBLESTONE,
   iron_hoe: BlockType.IRON_BLOCK, gold_hoe: BlockType.GOLD_BLOCK,
   diamond_hoe: BlockType.DIAMOND_BLOCK, netherite_hoe: BlockType.NETHERITE_BLOCK,
+  steel_hoe: BlockType.STEEL_BLOCK,
   // 武器
   wooden_sword: BlockType.OAK_PLANKS, stone_sword: BlockType.COBBLESTONE,
   iron_sword: BlockType.IRON_BLOCK, gold_sword: BlockType.GOLD_BLOCK,
   diamond_sword: BlockType.DIAMOND_BLOCK, netherite_sword: BlockType.NETHERITE_BLOCK,
+  steel_sword: BlockType.STEEL_BLOCK,
   bow: BlockType.OAK_PLANKS, crossbow: BlockType.OAK_PLANKS,
   trident: BlockType.PRISMARINE, arrow: BlockType.COBBLESTONE,
   shield: BlockType.OAK_PLANKS,
@@ -194,6 +225,8 @@ const ITEM_DISPLAY_BLOCK: Record<string, BlockType> = {
   diamond_leggings: BlockType.DIAMOND_BLOCK, diamond_boots: BlockType.DIAMOND_BLOCK,
   netherite_helmet: BlockType.NETHERITE_BLOCK, netherite_chestplate: BlockType.NETHERITE_BLOCK,
   netherite_leggings: BlockType.NETHERITE_BLOCK, netherite_boots: BlockType.NETHERITE_BLOCK,
+  steel_helmet: BlockType.STEEL_BLOCK, steel_chestplate: BlockType.STEEL_BLOCK,
+  steel_leggings: BlockType.STEEL_BLOCK, steel_boots: BlockType.STEEL_BLOCK,
   // 食物
   apple: BlockType.RED_WOOL, golden_apple: BlockType.GOLD_BLOCK,
   bread: BlockType.YELLOW_WOOL, cooked_beef: BlockType.BROWN_WOOL,
@@ -281,6 +314,12 @@ const BLOCK_TO_ITEM: Record<number, string> = {
   [BlockType.PURPLE_WOOL]: 'purple_wool', [BlockType.BLUE_WOOL]: 'blue_wool',
   [BlockType.BROWN_WOOL]: 'brown_wool', [BlockType.GREEN_WOOL]: 'green_wool',
   [BlockType.RED_WOOL]: 'red_wool', [BlockType.BLACK_WOOL]: 'black_wool',
+  // 指令专属方块
+  [BlockType.COMMAND_BLOCK]: 'command_block', [BlockType.CHAIN_COMMAND_BLOCK]: 'chain_command_block',
+  [BlockType.REPEAT_COMMAND_BLOCK]: 'repeat_command_block', [BlockType.BARRIER]: 'barrier',
+  [BlockType.STRUCTURE_BLOCK]: 'structure_block', [BlockType.JIGSAW_BLOCK]: 'jigsaw_block',
+  [BlockType.LIGHT_BLOCK]: 'light_block', [BlockType.STRUCTURE_VOID]: 'structure_void',
+  [BlockType.STEEL_ORE]: 'steel_ingot', [BlockType.STEEL_BLOCK]: 'steel_block',
 }
 
 /** 获取物品的显示方块类型（用于 HUD 颜色） */
@@ -289,6 +328,18 @@ function getItemDisplayBlock(itemId: string): BlockType {
 }
 
 export class Engine {
+  // 静态缓存：复用 Color/Vector3 对象，避免每帧 GC 分配
+  private static readonly _nightSky = new THREE.Color(0x071020)
+  private static readonly _daySky = new THREE.Color(0x87ceeb)
+  private static readonly _rainSky = new THREE.Color(0x2a3a4a)
+  private static readonly _snowSky = new THREE.Color(0xbcc8d4)
+  private static readonly _thunderSky = new THREE.Color(0x0c1018)
+  private static readonly _tmpColor1 = new THREE.Color()
+  private static readonly _tmpColor2 = new THREE.Color()
+  private static readonly _tmpColor3 = new THREE.Color()
+  private static readonly _tmpColor4 = new THREE.Color()
+  private static readonly _sunDir = new THREE.Vector3()
+
   public eventBus: EventBus
   public gameLoop: GameLoop
   public inputManager: InputManager
@@ -299,6 +350,9 @@ export class Engine {
   private textureAtlas!: TextureAtlas
   private chunkMesher!: ChunkMesher
   private sky!: Sky
+  private cloudSystem!: CloudSystem
+  private weatherSystem!: WeatherSystem
+  private weatherAudio!: WeatherAudio
 
   private worldGenerator!: WorldGenerator
   private chunkManager!: ChunkManager
@@ -306,6 +360,8 @@ export class Engine {
   private blockInteraction!: BlockInteraction
   private redstoneSystem!: RedstoneSystem
   private entityManager!: EntityManager
+  private portalSystem!: PortalSystem
+  private playerEntity!: Steve
   private ambientLight!: THREE.AmbientLight
   private sunLight!: THREE.DirectionalLight
 
@@ -331,6 +387,10 @@ export class Engine {
   private fallStartY = 0
   private wasInAir = false
 
+  // === NEW: 屏障方块可见性追踪 ===
+  private wasHoldingBarrier = false
+  private hadFullSteelArmor = false
+
   // === NEW: Underwater ===
   private isUnderwater = false
   private underwaterOverlay!: THREE.Mesh
@@ -352,29 +412,46 @@ export class Engine {
   private readonly dayLengthSeconds = 480
   private daylight = 1
   private mobSpawnTimer = 0
+  private weatherTimer = 60 // seconds until next auto-weather change
   private nextEntityId = 1
   private isRespawning = false
+
+  // 性能优化：节流计数器
+  private frameCount = 0
+  private lightUpdateAccum = 0
+  private biomeAccum = 0
+  private posAccum = 0
+  private lastChunkX = -9999
+  private lastChunkZ = -9999
 
   private container: HTMLElement
   private seed: number
   private superflat: boolean
+  private isTouchDevice = false
 
   constructor(container: HTMLElement, seed?: number, superflat = false) {
     this.container = container
     this.seed = seed ?? Math.floor(Math.random() * 2147483647)
     this.superflat = superflat
+    this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
     this.eventBus = new EventBus()
-    this.gameLoop = new GameLoop()
+    // 移动设备帧率上限 30fps，节省电量；PC 60fps
+    this.gameLoop = new GameLoop(this.isTouchDevice ? 30 : 60)
     this.inputManager = new InputManager()
   }
 
   async init(): Promise<void> {
-    this.renderer = new THREE.WebGLRenderer({ antialias: false })
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: !this.isTouchDevice, // 移动端关闭抗锯齿
+      powerPreference: 'high-performance',
+    })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // 移动端最大 1x 像素比，PC 最大 2x
+    this.renderer.setPixelRatio(this.isTouchDevice ? 1 : Math.min(window.devicePixelRatio, 2))
     this.renderer.setClearColor(0x87CEEB)
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    // 移动端使用更便宜的 PCFShadowMap
+    this.renderer.shadowMap.type = this.isTouchDevice ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap
     this.container.appendChild(this.renderer.domElement)
 
     this.scene = new THREE.Scene()
@@ -388,16 +465,48 @@ export class Engine {
     this.sky = new Sky()
     this.scene.add(this.sky.mesh)
 
+    this.cloudSystem = new CloudSystem()
+    this.scene.add(this.cloudSystem.mesh)
+
+    this.weatherSystem = new WeatherSystem()
+    this.weatherSystem.addToScene(this.scene)
+
+    this.weatherAudio = new WeatherAudio()
+    this.weatherSystem.onThunder = (loudness) => this.weatherAudio.triggerThunder(loudness)
+    this.weatherSystem.getGroundHeight = (x, z) => this.chunkManager.getHeightAt(x, z)
+    this.weatherSystem.getPlayerPos = () => this.playerPosition.clone()
+    this.weatherSystem.onLightningStrike = (pos) => {
+      // If player is within 2.5 blocks of the strike, they die instantly
+      const dx = this.playerPosition.x - pos.x
+      const dy = this.playerPosition.y - pos.y
+      const dz = this.playerPosition.z - pos.z
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      if (dist < 2.5 && this.gameMode === 'survival') {
+        const pStore = usePlayerStore()
+        pStore.health = 0
+        this.isDead = true
+        pStore.isDead = true
+        pStore.deathCount++
+        const inv = useInventoryStore()
+        inv.setSurvivalInventory()
+        this.eventBus.emit('player:died', { deathCount: pStore.deathCount, cause: 'lightning' })
+      }
+    }
+
     this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
     this.scene.add(this.ambientLight)
     this.sunLight = new THREE.DirectionalLight(0xffffff, 0.8)
     this.sunLight.position.set(50, 100, 30)
     this.sunLight.castShadow = true
-    this.sunLight.shadow.mapSize.set(1024, 1024)
-    this.sunLight.shadow.camera.left = -48
-    this.sunLight.shadow.camera.right = 48
-    this.sunLight.shadow.camera.top = 48
-    this.sunLight.shadow.camera.bottom = -48
+    this.sunLight.shadow.mapSize.set(this.isTouchDevice ? 512 : 1024, this.isTouchDevice ? 512 : 1024)
+    this.sunLight.shadow.camera.left = -32
+    this.sunLight.shadow.camera.right = 32
+    this.sunLight.shadow.camera.top = 32
+    this.sunLight.shadow.camera.bottom = -32
+    this.sunLight.shadow.camera.near = 1
+    this.sunLight.shadow.camera.far = 256
+    this.sunLight.shadow.bias = -0.00015
+    this.sunLight.shadow.normalBias = 0.02
     this.scene.add(this.sunLight)
     this.scene.add(this.sunLight.target)
 
@@ -405,6 +514,12 @@ export class Engine {
     this.isUnderwater = false
 
     this.inputManager.attach(this.renderer.domElement)
+
+    // Init audio on first pointer lock (browser requires user gesture)
+    this.inputManager.onPointerLockChange = (locked) => {
+      if (locked) this.weatherAudio.init()
+    }
+
     this.setupInputHandlers()
 
     this.worldGenerator = new WorldGenerator(this.seed, this.superflat)
@@ -416,6 +531,18 @@ export class Engine {
     this.blockInteraction = new BlockInteraction(this.chunkManager, this.eventBus, this.scene)
     this.redstoneSystem = new RedstoneSystem(this.chunkManager, this.eventBus)
     this.entityManager = new EntityManager(this.scene)
+    this.portalSystem = new PortalSystem(this.chunkManager)
+
+    // Create player model (visible only in third-person)
+    this.playerEntity = new Steve('player')
+    this.playerEntity.mesh.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true
+        object.receiveShadow = true
+      }
+    })
+    this.playerEntity.mesh.visible = false // hidden in first-person by default
+    this.scene.add(this.playerEntity.mesh)
 
     const initialSpawn = this.findSafeSpawn(0, 0, 0, 320)
     this.playerPosition.x = initialSpawn.x + 0.5
@@ -476,10 +603,11 @@ export class Engine {
 
   private setupInputHandlers(): void {
     this.inputManager.onKeyDown = (key: string) => {
-      if (key === 'F5') this.cameraManager.toggleMode()
+      // V键: 切换视角 (第一/第三人称) - 替代F5避免浏览器刷新
+      if (key === 'KeyV') this.cameraManager.toggleMode()
 
-      // F2: 手动保存
-      if (key === 'F2') {
+      // H键: 手动保存 - 替代F2
+      if (key === 'KeyH') {
         const saved = this.saveGame()
         const pStore = usePlayerStore()
         pStore.breakToolName = saved ? '✓ 已保存' : '✗ 保存失败'
@@ -490,9 +618,38 @@ export class Engine {
         if (document.pointerLockElement) document.exitPointerLock()
       }
 
-      // G key: toggle game mode
+      // G键: 切换游戏模式 (创造/生存)
       if (key === 'KeyG') {
         this.toggleGameMode()
+      }
+
+      // R键: 切换控制模式 (PC / 手机)
+      if (key === 'KeyR') {
+        const pStore2 = usePlayerStore()
+        pStore2.toggleControlMode()
+        const modeLabel = pStore2.controlMode === 'mobile' ? '📱 手机模式' : '🖥 PC模式'
+        pStore2.breakToolName = modeLabel
+        setTimeout(() => { pStore2.breakToolName = null }, 2000)
+      }
+
+      // Y键: 循环切换天气 (晴 → 雨 → 雪 → 雷暴)
+      if (key === 'KeyY') {
+        if (this.gameMode === 'creative') {
+          this.cycleWeather()
+        } else {
+          const pStore = usePlayerStore()
+          pStore.breakToolName = '需要创造模式'
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+        }
+      }
+
+      // F键: 切换作弊开关 - 替代F4避免浏览器开发者工具
+      if (key === 'KeyF') {
+        const pStore = usePlayerStore()
+        pStore.toggleCheats()
+        const status = pStore.cheatsEnabled ? '开启' : '关闭'
+        pStore.breakToolName = `作弊: ${status}`
+        setTimeout(() => { pStore.breakToolName = null }, 2000)
       }
 
       // Space: double-tap to toggle flying (creative mode)
@@ -524,18 +681,46 @@ export class Engine {
     }
 
     this.inputManager.onMouseDown = (button: number) => {
-      if (!this.inputManager.locked) return
+      // 触摸设备 或 pointer lock 已激活时允许操作
+      const actionAllowed = this.isTouchDevice || this.inputManager.locked
+      if (!actionAllowed) {
+        // PC 首次点击：请求 pointer lock，不执行动作（避免第一次点击就挖/放）
+        this.renderer.domElement.requestPointerLock()
+        return
+      }
+
       if (button === 0) {
-        // 左键: 先检查是否攻击实体，否则挖方块
+        // 左键: 检查调试棒 -> 攻击实体 -> 挖方块
+        const inv = useInventoryStore()
+        const selectedSlot = inv.hotbar[inv.selectedSlot]
+        if (selectedSlot?.item === 'debug_stick') {
+          this.useDebugStickOnTarget()
+          return
+        }
         if (!this.attackEntity()) {
           this.isBreaking = true
           this.startBreaking()
         }
       } else if (button === 2) {
         const forcePlace = this.inputManager.isKeyPressed('ShiftLeft') || this.inputManager.isKeyPressed('ShiftRight')
-        // 右键: 先检查吃食物，否则开容器/放方块
+        // 右键: 调试棒交互 -> 光源方块切换 -> 命令方块编辑 -> 结构/拼图方块 -> 容器 -> 吃食物 -> 放方块
+        const inv = useInventoryStore()
+        const selectedSlot = inv.hotbar[inv.selectedSlot]
+        if (!forcePlace && selectedSlot?.item === 'debug_stick') {
+          this.useDebugStickOnTarget()
+          return
+        }
+        if (!forcePlace && this.handleSpecialInteraction()) {
+          return
+        }
         if (!forcePlace && !this.openTargetContainer()) {
-          if (!this.eatFood()) this.placeBlock()
+          if (!this.eatFood()) {
+            // 传送门激活（打火石/末影之眼 → 尝试激活传送门）
+            if (!forcePlace && this.tryActivatePortalOnTarget()) {
+              return
+            }
+            this.placeBlock()
+          }
         } else {
           this.placeBlock()
         }
@@ -587,6 +772,20 @@ export class Engine {
     this.eventBus.emit('game:modeChanged', this.gameMode)
   }
 
+  /** 循环切换天气 */
+  private cycleWeather(): void {
+    const order: WeatherType[] = ['clear', 'rain', 'snow', 'thunder']
+    const current = this.weatherSystem.target
+    const idx = order.indexOf(current)
+    const next = order[(idx + 1) % order.length]
+    this.weatherSystem.request(next)
+    const pStore = usePlayerStore()
+    pStore.weather = next
+    const names: Record<WeatherType, string> = { clear: '☀ 晴天', rain: '🌧 雨天', snow: '❄ 雪天', thunder: '⛈ 雷暴' }
+    pStore.breakToolName = names[next]
+    setTimeout(() => { pStore.breakToolName = null }, 2000)
+  }
+
   /** 公开方法：设置游戏模式 */
   setGameMode(mode: 'survival' | 'creative'): void {
     if (this.gameMode === mode) return
@@ -604,6 +803,16 @@ export class Engine {
         usePlayerStore().breakProgress = 0
         usePlayerStore().breakToolName = null
         return
+      }
+      // 指令专属方块检查：非创造+作弊模式不可破坏
+      const targetBlock = this.blockInteraction.getTargetBlock()
+      if (targetBlock) {
+        const tDef = BLOCK_REGISTRY[targetBlock.blockType]
+        if (tDef?.commandExclusive && !usePlayerStore().canUseCommandBlocks) {
+          usePlayerStore().breakProgress = 0
+          usePlayerStore().breakToolName = '需要创造模式+作弊'
+          return
+        }
       }
       const result = this.blockInteraction.breakHit(isCreative)
 
@@ -696,6 +905,9 @@ export class Engine {
     if (slot?.item) {
       const itemDef = getItemDefinition(slot.item)
       if (itemDef?.damage) damage = itemDef.damage
+      // Sharpness enchantment: +1.25 damage per level
+      const sharpLvl = getEnchantLevel(slot.enchantments, 'sharpness')
+      if (sharpLvl > 0) damage += sharpLvl * 1.25
     }
 
     targetEntity.takeDamage(damage)
@@ -704,13 +916,18 @@ export class Engine {
     const knockback = camDir.clone().setY(0.3).normalize().multiplyScalar(0.5)
     targetEntity.position.add(knockback)
 
-    // 武器耐久消耗
+    // 武器耐久消耗 (Unbreaking enchantment saves durability)
     if (slot?.item) {
       const itemDef = getItemDefinition(slot.item)
       if (itemDef?.durability) {
-        if (!slot.durabilityDamage) slot.durabilityDamage = 0
-        slot.durabilityDamage++
-        if (slot.durabilityDamage >= itemDef.durability) {
+        const unbreakingLvl = getEnchantLevel(slot.enchantments, 'unbreaking')
+        // Unbreaking: (100 / (level+1))% chance to consume durability
+        const saveChance = unbreakingLvl / (unbreakingLvl + 1)
+        if (Math.random() >= saveChance) {
+          if (!slot.durabilityDamage) slot.durabilityDamage = 0
+          slot.durabilityDamage++
+        }
+        if ((slot.durabilityDamage ?? 0) >= itemDef.durability) {
           slot.item = null
           slot.count = 0
           slot.durabilityDamage = 0
@@ -724,10 +941,20 @@ export class Engine {
     const inv = useInventoryStore()
     const selectedSlot = inv.hotbar[inv.selectedSlot]
 
+    // 没有选择任何方块时，不放置任何东西
+    if (!selectedSlot?.item || !selectedSlot.blockType) return
+
+    // 指令专属方块需要创造模式+作弊才能放置
+    const blockDef = BLOCK_REGISTRY[selectedSlot.blockType]
+    if (blockDef?.commandExclusive && !usePlayerStore().canUseCommandBlocks) {
+      usePlayerStore().breakToolName = '需要创造模式+作弊'
+      setTimeout(() => { usePlayerStore().breakToolName = null }, 2000)
+      return
+    }
+
     // Creative mode: always allow placing (infinite blocks)
     if (this.gameMode === 'creative') {
-      // If no block selected, default to stone
-      const blockType = selectedSlot?.blockType ?? BlockType.STONE
+      const blockType = selectedSlot.blockType
       const halfWidth = PLAYER_WIDTH / 2
       const playerAABB = {
         minX: this.playerPosition.x - halfWidth, maxX: this.playerPosition.x + halfWidth,
@@ -739,7 +966,6 @@ export class Engine {
     }
 
     // Survival: consume block
-    if (!selectedSlot?.item || !selectedSlot.blockType) return
     const halfWidth = PLAYER_WIDTH / 2
     const playerAABB = {
       minX: this.playerPosition.x - halfWidth, maxX: this.playerPosition.x + halfWidth,
@@ -748,6 +974,81 @@ export class Engine {
     }
     const placed = this.blockInteraction.placeBlock(selectedSlot.blockType, playerAABB)
     if (placed) inv.removeFromSelected()
+  }
+
+  // ==================== 调试棒交互 ====================
+
+  private useDebugStickOnTarget(): void {
+    const target = this.blockInteraction.getTargetBlock()
+    if (!target) return
+
+    const { position, blockType } = target
+    const pStore = usePlayerStore()
+
+    if (!pStore.canUseCommandBlocks) {
+      pStore.breakToolName = '需要创造模式+作弊'
+      setTimeout(() => { pStore.breakToolName = null }, 2000)
+      return
+    }
+
+    const result = debugStickUse(position.x, position.y, position.z, blockType)
+    if (result) {
+      pStore.breakToolName = result.message
+      setTimeout(() => { pStore.breakToolName = null }, 2000)
+      // 触发区块更新
+      this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+    } else {
+      const blockDef = BLOCK_REGISTRY[blockType]
+      pStore.breakToolName = `${blockDef?.name || '方块'} 无可调试属性`
+      setTimeout(() => { pStore.breakToolName = null }, 2000)
+    }
+  }
+
+  // ==================== 特殊方块交互 (右键) ====================
+
+  private handleSpecialInteraction(): boolean {
+    const target = this.blockInteraction.getTargetBlock()
+    if (!target) return false
+
+    const { position, blockType } = target
+    const pStore = usePlayerStore()
+
+    // 光源方块: 右键切换开关
+    if (blockType === BlockType.LIGHT_BLOCK) {
+      if (!pStore.canUseCommandBlocks) return false
+      const isOn = toggleLightBlock(position.x, position.y, position.z)
+      pStore.breakToolName = isOn ? '💡 光源开启' : '💡 光源关闭'
+      setTimeout(() => { pStore.breakToolName = null }, 2000)
+      this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+      return true
+    }
+
+    // 命令方块: 右键打开命令编辑器
+    if (blockType === BlockType.COMMAND_BLOCK ||
+        blockType === BlockType.CHAIN_COMMAND_BLOCK ||
+        blockType === BlockType.REPEAT_COMMAND_BLOCK) {
+      if (!pStore.canUseCommandBlocks) return false
+      // 通过事件总线通知UI打开命令编辑框
+      this.eventBus.emit('commandBlock:open', {
+        x: position.x, y: position.y, z: position.z,
+        blockType: blockType
+      })
+      if (document.pointerLockElement) document.exitPointerLock()
+      return true
+    }
+
+    // 结构方块 / 拼图方块: 右键打开设置
+    if (blockType === BlockType.STRUCTURE_BLOCK || blockType === BlockType.JIGSAW_BLOCK) {
+      if (!pStore.canUseCommandBlocks) return false
+      this.eventBus.emit('structureBlock:open', {
+        x: position.x, y: position.y, z: position.z,
+        blockType: blockType
+      })
+      if (document.pointerLockElement) document.exitPointerLock()
+      return true
+    }
+
+    return false
   }
 
   private openTargetContainer(): boolean {
@@ -949,6 +1250,26 @@ export class Engine {
       this.playerPosition.copy(result.position)
       this.playerVelocity.copy(result.velocity)
 
+      // === 虚空保护：掉入未加载区块时回弹到安全位置 ===
+      if (this.playerPosition.y < -5) {
+        const px = Math.floor(this.playerPosition.x)
+        const pz = Math.floor(this.playerPosition.z)
+        // 尝试在玩家附近找一块已加载的陆地
+        const safeY = this.findSafeY(px, pz)
+        if (safeY > 0) {
+          this.playerPosition.y = safeY + 2
+          this.playerVelocity.set(0, 0, 0)
+          this.fallStartY = this.playerPosition.y
+          this.wasInAir = false
+        } else {
+          // 完全找不到安全位置：传送回世界原点附近
+          this.playerPosition.set(8.5, 80, 8.5)
+          this.playerVelocity.set(0, 0, 0)
+          this.fallStartY = 80
+          this.wasInAir = false
+        }
+      }
+
       // === Fall damage ===
       if (result.onGround && this.wasInAir && this.gameMode === 'survival') {
         const fallDist = this.fallStartY - this.playerPosition.y
@@ -1011,6 +1332,21 @@ export class Engine {
       this.eventBus.emit('player:died', { deathCount: pStoreOxy.deathCount })
     }
 
+    // === Steel armor set bonus: +10 max health ===
+    const invCheck = useInventoryStore()
+    const hasSteelSet = invCheck.hasFullSteelArmor
+    const pStoreHealth = usePlayerStore()
+    if (hasSteelSet !== this.hadFullSteelArmor) {
+      this.hadFullSteelArmor = hasSteelSet
+      if (hasSteelSet) {
+        pStoreHealth.maxHealth = 20
+        pStoreHealth.health = Math.min(pStoreHealth.maxHealth, pStoreHealth.health + 10)
+      } else {
+        pStoreHealth.maxHealth = 10
+        pStoreHealth.health = Math.min(pStoreHealth.health, 10)
+      }
+    }
+
     // === Health regeneration (survival only) ===
     // Regenerate 1 health every 3 seconds if not taking damage for 5 seconds
     if (this.gameMode === 'survival' && !this.isDead) {
@@ -1032,6 +1368,34 @@ export class Engine {
     this.cameraManager.update()
     this.sky.updatePosition(this.playerPosition)
 
+    // Cloud & weather
+    const sunDir = new THREE.Vector3(
+      Math.cos(this.timeOfDay * Math.PI * 2 - Math.PI / 2),
+      Math.sin(this.timeOfDay * Math.PI * 2 - Math.PI / 2),
+      0.28,
+    ).normalize()
+    this.weatherSystem.update(this.playerPosition, dt, this.daylight)
+    this.cloudSystem.weatherIntensity = this.weatherSystem.intensity
+    this.cloudSystem.update(this.playerPosition, dt, this.daylight, sunDir)
+
+    // Weather audio
+    const wCurr = this.weatherSystem.current
+    const wInt = this.weatherSystem.intensity
+    this.weatherAudio.setRain(wCurr === 'rain' || wCurr === 'thunder' ? wInt * 0.7 : 0)
+    this.weatherAudio.setWind(wCurr === 'thunder' ? wInt * 0.8 : wCurr === 'snow' ? wInt * 0.25 : wCurr === 'rain' ? wInt * 0.3 : 0)
+    this.weatherAudio.update(dt)
+
+    // Sync player model for third-person view
+    this.playerEntity.position.copy(this.playerPosition)
+    this.playerEntity.updateMesh()
+    this.playerEntity.velocity.copy(this.playerVelocity)
+    this.playerEntity.mesh.rotation.y = this.yaw
+    this.playerEntity.mesh.visible = this.cameraManager.mode === 'thirdPerson'
+    // Update walk animation (entity.update() runs AI, so call animations directly)
+    this.playerEntity.updateAnimationsPublic(dt)
+    // Sync UI store camera mode
+    useUIStore().cameraMode = this.cameraManager.mode
+
     // Underwater visual: update fog and clear color
     if (this.isUnderwater) {
       this.renderer.setClearColor(0x1a3a6a)
@@ -1045,21 +1409,65 @@ export class Engine {
     const camDir = this.cameraManager.getForwardDirection()
     this.blockInteraction.update(camPos, camDir)
 
+    // 检测手持屏障方块变化 - 只有手持屏障时才看见屏障
+    const inv = useInventoryStore()
+    const heldItem = inv.hotbar[inv.selectedSlot]?.item
+    const isHoldingBarrier = heldItem === 'barrier'
+    if (isHoldingBarrier !== this.wasHoldingBarrier) {
+      this.wasHoldingBarrier = isHoldingBarrier
+      this.chunkManager.showBarriers = isHoldingBarrier
+      this.chunkManager.markAllDirty()
+    }
+
     // Chunks
     const chunkX = Math.floor(this.playerPosition.x / 16)
     const chunkZ = Math.floor(this.playerPosition.z / 16)
     this.chunkManager.updateFluids(dt)
     this.redstoneSystem.update(dt)
+    // 每帧都更新区块加载（区块加载有内部节流；不调用会导致脏网格不重建+加载停滞）
     this.chunkManager.updateChunks(chunkX, chunkZ)
-    this.chunkManager.updateDynamicLights(this.playerPosition)
+    this.frameCount++
+
+    // === 传送门检测 ===
+    const portalResult = this.portalSystem.update(this.playerPosition, dt)
+    if (portalResult?.shouldTeleport) {
+      this.teleportToDimension(portalResult.targetDimension)
+    }
+
+    // 更新传送门进度到 HUD
+    const portalProgress = this.portalSystem.getPortalProgress()
+    if (portalProgress > 0) {
+      const pStore = usePlayerStore()
+      pStore.breakToolName = `传送中... ${Math.floor(portalProgress * 100)}%`
+    }
+
+    // 动态光源：每 4 帧更新一次，避免每帧都排序所有光源
+    this.lightUpdateAccum += dt
+    if (this.lightUpdateAccum >= 0.066) { // ~15fps 更新频率
+      this.lightUpdateAccum = 0
+      this.chunkManager.updateDynamicLights(this.playerPosition)
+    }
     this.updateCreatures(dt)
 
-    this.eventBus.emit('player:position', {
-      x: Math.floor(this.playerPosition.x),
-      y: Math.floor(this.playerPosition.y),
-      z: Math.floor(this.playerPosition.z),
-    })
-    this.eventBus.emit('player:underwater', this.isUnderwater)
+    // 节流：位置事件每 0.1 秒发送一次（减少 Vue 响应式开销）
+    this.posAccum += dt
+    if (this.posAccum >= 0.1) {
+      this.posAccum = 0
+      this.eventBus.emit('player:position', {
+        x: Math.floor(this.playerPosition.x),
+        y: Math.floor(this.playerPosition.y),
+        z: Math.floor(this.playerPosition.z),
+      })
+      this.eventBus.emit('player:underwater', this.isUnderwater)
+    }
+
+    // 节流：生物群系每 0.5 秒更新一次（仅用于 HUD 显示）
+    this.biomeAccum += dt
+    if (this.biomeAccum >= 0.5) {
+      this.biomeAccum = 0
+      const biomeId = this.worldGenerator.getBiome(this.playerPosition.x, this.playerPosition.z)
+      usePlayerStore().biome = BIOMES[biomeId]?.name ?? biomeId
+    }
   }
 
   private render(_dt: number): void {
@@ -1070,28 +1478,80 @@ export class Engine {
   private updateDayNight(dt: number): void {
     this.timeOfDay = (this.timeOfDay + dt / this.dayLengthSeconds) % 1
     const angle = this.timeOfDay * Math.PI * 2 - Math.PI / 2
-    const sunDirection = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0.28).normalize()
-    this.daylight = THREE.MathUtils.smoothstep(sunDirection.y, -0.18, 0.12)
+    // 复用缓存的 sunDirection 向量，避免每帧分配
+    Engine._sunDir.set(Math.cos(angle), Math.sin(angle), 0.28).normalize()
+    this.daylight = THREE.MathUtils.smoothstep(Engine._sunDir.y, -0.18, 0.12)
 
-    const nightSky = new THREE.Color(0x071020)
-    const daySky = new THREE.Color(0x87ceeb)
-    const skyColor = nightSky.clone().lerp(daySky, this.daylight)
-    const ambient = 0.08 + this.daylight * 0.47
+    const w = this.weatherSystem.intensity
+    const isRain = this.weatherSystem.current === 'rain'
+    const isSnow = this.weatherSystem.current === 'snow'
+    const isThunder = this.weatherSystem.current === 'thunder'
 
-    this.sky.updateCycle(this.daylight, sunDirection)
-    this.ambientLight.intensity = ambient
-    this.sunLight.intensity = 0.04 + this.daylight * 0.92
+    // Weather-blended sky colour
+    let weatherSky = Engine._daySky
+    if (isThunder) weatherSky = Engine._thunderSky
+    else if (isRain) weatherSky = Engine._rainSky
+    else if (isSnow) weatherSky = Engine._snowSky
+
+    // 复用缓存的 Color 对象进行 lerp，避免 clone() 分配
+    const baseSkyColor = Engine._tmpColor1.copy(Engine._nightSky).lerp(Engine._daySky, this.daylight)
+    const weatherSkyColor = Engine._tmpColor2.copy(Engine._nightSky).lerp(weatherSky, this.daylight)
+    const skyColor = Engine._tmpColor3.copy(baseSkyColor).lerp(weatherSkyColor, w)
+
+    // Ambient: weather reduces daylight reach
+    const weatherAmbientScale = 1.0 - w * (isThunder ? 0.7 : isRain ? 0.4 : isSnow ? 0.15 : 0)
+    let ambient = 0.08 + this.daylight * 0.47
+    ambient *= weatherAmbientScale
+    if (isSnow) ambient += w * 0.12
+
+    // Thunder flash
+    const flash = this.weatherSystem.getThunderFlash()
+    const flashBoost = flash > 0.01 ? flash * 0.6 : 0
+
+    const weatherTypeCode = isThunder ? 3 : isRain ? 1 : isSnow ? 2 : 0
+    this.sky.updateCycle(this.daylight + flashBoost, Engine._sunDir, w, weatherTypeCode)
+    this.ambientLight.intensity = ambient + flashBoost
+    this.ambientLight.color.set(isSnow ? 0xe8eeff : 0xffffff)
+    this.sunLight.intensity = (0.04 + this.daylight * 0.92) * weatherAmbientScale
     this.sunLight.color.set(this.daylight < 0.45 ? 0xffb36b : 0xffffff)
-    this.sunLight.position.copy(this.playerPosition).addScaledVector(sunDirection, 120)
+    this.sunLight.position.copy(this.playerPosition).addScaledVector(Engine._sunDir, 120)
     this.sunLight.target.position.copy(this.playerPosition)
-    this.chunkMesher.updateEnvironment(sunDirection, ambient, skyColor)
+    this.chunkMesher.updateEnvironment(Engine._sunDir, ambient, skyColor)
 
-    if (!this.isUnderwater) this.renderer.setClearColor(skyColor)
+    // Fog: weather reduces visibility
+    const fogBaseNear = 32 + this.daylight * 48
+    const fogBaseFar  = 80 + this.daylight * 96
+    const fogReduce = 1.0 - w * (isThunder ? 0.6 : isRain ? 0.45 : isSnow ? 0.35 : 0)
+    const fogNear = fogBaseNear * fogReduce
+    const fogFar  = Math.max(fogNear + 8, fogBaseFar * fogReduce)
+    const fogColor = Engine._tmpColor4.copy(baseSkyColor).lerp(weatherSkyColor, w * 0.8)
+
+    this.chunkMesher.opaqueMaterial.uniforms.fogNear.value = fogNear
+    this.chunkMesher.opaqueMaterial.uniforms.fogFar.value = fogFar
+    this.chunkMesher.opaqueMaterial.uniforms.fogColor.value.copy(fogColor)
+    this.chunkMesher.transparentMaterial.uniforms.fogNear.value = fogNear
+    this.chunkMesher.transparentMaterial.uniforms.fogFar.value = fogFar
+    this.chunkMesher.transparentMaterial.uniforms.fogColor.value.copy(fogColor)
+
+    if (!this.isUnderwater) this.renderer.setClearColor(fogColor)
     usePlayerStore().timeOfDay = this.timeOfDay
   }
 
   private updateCreatures(dt: number): void {
     this.entityManager.update(dt)
+
+    // Auto weather cycling
+    this.weatherTimer -= dt
+    if (this.weatherTimer <= 0) {
+      this.weatherTimer = 120 + Math.random() * 180 // 2-5 min
+      const types: WeatherType[] = ['clear', 'clear', 'rain', 'snow', 'clear', 'rain', 'thunder']
+      const next = types[Math.floor(Math.random() * types.length)]
+      if (next !== this.weatherSystem.target) {
+        this.weatherSystem.request(next)
+        usePlayerStore().weather = next
+      }
+    }
+
     this.mobSpawnTimer -= dt
     if (this.mobSpawnTimer > 0 || this.isDead) return
     this.mobSpawnTimer = 1
@@ -1108,7 +1568,7 @@ export class Engine {
     const animalCount = entities.filter(entity => entity instanceof Animal).length
     const zombieCount = entities.filter(entity => entity instanceof Zombie).length
 
-    if (animalCount < 7) this.spawnAnimal()
+    if (animalCount < 12) this.spawnAnimal()
     if (isNight && zombieCount < 20) {
       this.spawnZombie()
       if (zombieCount < 16) this.spawnZombie()
@@ -1132,10 +1592,68 @@ export class Engine {
     return null
   }
 
+  /** Biome → possible animals for spawning. */
+  private static readonly BIOME_ANIMALS: Record<string, AnimalKind[]> = {
+    plains: ['cow','pig','sheep','chicken','horse'],
+    sunflower_plains: ['cow','pig','sheep','chicken','horse','rabbit'],
+    forest: ['cow','pig','sheep','chicken','wolf','rabbit'],
+    flower_forest: ['sheep','chicken','rabbit','bee'],
+    birch_forest: ['cow','sheep','chicken','rabbit'],
+    dark_forest: ['pig','chicken','wolf'],
+    taiga: ['wolf','fox','sheep','rabbit'],
+    snowy_taiga: ['wolf','fox'],
+    old_growth_taiga: ['wolf','fox','sheep'],
+    snowy_plains: ['polar_bear','rabbit'],
+    ice_spikes: ['polar_bear'],
+    desert: ['rabbit','horse'],
+    savanna: ['cow','pig','sheep','chicken','horse','donkey'],
+    savanna_plateau: ['horse','donkey','cow'],
+    badlands: [],
+    wooded_badlands: ['cow','sheep'],
+    jungle: ['chicken','pig','parrot','ocelot'],
+    sparse_jungle: ['chicken','pig','parrot'],
+    bamboo_jungle: ['panda','chicken','pig'],
+    swamp: ['frog','pig','chicken'],
+    mangrove_swamp: ['frog'],
+    windswept_hills: ['sheep','goat','pig'],
+    windswept_forest: ['sheep','goat','wolf'],
+    windswept_gravelly_hills: ['goat'],
+    meadow: ['sheep','cow','rabbit'],
+    grove: ['sheep','wolf','rabbit'],
+    jagged_peaks: ['goat'],
+    frozen_peaks: ['goat','polar_bear'],
+    stony_peaks: ['goat'],
+    beach: ['turtle'],
+    snowy_beach: ['rabbit'],
+    stony_shore: [],
+    river: ['frog','chicken'],
+    frozen_river: ['rabbit'],
+    ocean: ['squid'],
+    deep_ocean: ['squid'],
+    warm_ocean: ['turtle','squid'],
+    lukewarm_ocean: ['squid'],
+    cold_ocean: ['squid'],
+    frozen_ocean: ['polar_bear'],
+    mushroom_fields: ['cow','sheep'],
+  }
+
   private spawnAnimal(): void {
     const position = this.findCreatureSpawn()
     if (!position) return
-    const kinds: AnimalKind[] = ['cow', 'pig', 'sheep']
+
+    const biome = this.worldGenerator.getBiome(position.x, position.z)
+    const kinds = Engine.BIOME_ANIMALS[biome] ?? ['cow','pig','sheep']
+    if (kinds.length === 0) {
+      // Try plains animals as fallback
+      const fallback: AnimalKind[] = ['cow','pig','sheep','chicken']
+      const kind = fallback[Math.floor(Math.random() * fallback.length)]
+      const animal = new Animal(`animal-${this.nextEntityId++}`, kind)
+      animal.position.copy(position)
+      animal.setHome(position)
+      animal.setChunkManager(this.chunkManager)
+      this.entityManager.addEntity(animal)
+      return
+    }
     const kind = kinds[Math.floor(Math.random() * kinds.length)]
     const animal = new Animal(`animal-${this.nextEntityId++}`, kind)
     animal.position.copy(position)
@@ -1159,8 +1677,10 @@ export class Engine {
   }
 
   private onResize(): void {
-    const width = window.innerWidth
-    const height = window.innerHeight
+    // 使用容器实际尺寸，正确处理刘海屏 safe-area 裁剪
+    const rect = this.container.getBoundingClientRect()
+    const width = rect.width || window.innerWidth
+    const height = rect.height || window.innerHeight
     this.renderer.setSize(width, height)
     this.cameraManager.setAspect(width / height)
   }
@@ -1340,6 +1860,197 @@ export class Engine {
     }
   }
 
+  // ==================== 传送门 & 维度切换 ====================
+
+  /**
+   * 传送玩家到指定维度
+   * 生成一个适合该维度的传送平台，并改变天空颜色
+   */
+  private async teleportToDimension(targetDimension: Dimension): Promise<void> {
+    const prevDimension = this.portalSystem.currentDimension
+
+    // 保存当前位置
+    this.portalSystem.savePosition(prevDimension, this.playerPosition)
+
+    // 切换维度
+    this.portalSystem.currentDimension = targetDimension
+
+    // 计算目标位置
+    let targetPos: THREE.Vector3
+    const saved = this.portalSystem.getSavedPosition(targetDimension)
+    if (saved) {
+      targetPos = saved.clone()
+    } else {
+      // 首次进入某维度：使用偏移位置生成平台
+      const offset = targetDimension === 'nether' ? 5000 : targetDimension === 'end' ? -5000 : 0
+      targetPos = new THREE.Vector3(offset + 8, 80, 8)
+    }
+
+    // 确保目标区域区块已加载
+    const cx = Math.floor(targetPos.x / 16)
+    const cz = Math.floor(targetPos.z / 16)
+    await this.chunkManager.updateChunks(cx, cz)
+
+    // 在目标位置生成安全平台（如果还没有地面）
+    this.generateDimensionPlatform(Math.floor(targetPos.x), Math.floor(targetPos.z), targetDimension)
+
+    // 找到安全 Y 位置
+    const safeY = this.findSafeY(Math.floor(targetPos.x), Math.floor(targetPos.z))
+    if (safeY > 0) {
+      targetPos.y = safeY + 2
+    }
+
+    // 传送玩家
+    this.playerPosition.copy(targetPos)
+    this.playerVelocity.set(0, 0, 0)
+    this.fallStartY = targetPos.y
+    this.wasInAir = false
+
+    // 改变天空颜色
+    this.updateSkyForDimension(targetDimension)
+
+    // 通知玩家
+    const pStore = usePlayerStore()
+    const dimNames: Record<Dimension, string> = {
+      overworld: '🌍 主世界',
+      nether: '🔥 下界',
+      end: '🌌 末地',
+    }
+    pStore.breakToolName = dimNames[targetDimension]
+    setTimeout(() => { pStore.breakToolName = null }, 3000)
+  }
+
+  /**
+   * 在指定位置生成维度平台
+   */
+  private generateDimensionPlatform(cx: number, cz: number, dimension: Dimension): void {
+    const blockType = dimension === 'nether' ? BlockType.NETHERRACK
+      : dimension === 'end' ? BlockType.END_STONE
+      : BlockType.STONE
+
+    // 生成 5x5 平台，3 格高
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        const height = this.chunkManager.getHeightAt(cx + dx, cz + dz)
+        // 如果高度太低（虚空），放置平台方块
+        if (height < 5) {
+          for (let dy = 0; dy < 3; dy++) {
+            this.chunkManager.setBlock(cx + dx, dy, cz + dz, blockType)
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 根据维度改变天空颜色
+   */
+  private updateSkyForDimension(dimension: Dimension): void {
+    switch (dimension) {
+      case 'nether':
+        this.renderer.setClearColor(0x330808)
+        this.scene.fog = new THREE.Fog(0x330808, 10, 60)
+        this.sunLight.intensity = 0.1
+        this.ambientLight.intensity = 0.3
+        break
+      case 'end':
+        this.renderer.setClearColor(0x000008)
+        this.scene.fog = new THREE.Fog(0x000008, 20, 100)
+        this.sunLight.intensity = 0.2
+        this.ambientLight.intensity = 0.2
+        break
+      default:
+        // 恢复主世界天空（由 updateDayNight 接管）
+        this.scene.fog = null
+        break
+    }
+  }
+
+  /**
+   * 尝试激活传送门（打火石右键点击或末影之眼右键点击框架）
+   */
+  private tryActivatePortal(tx: number, ty: number, tz: number): boolean {
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+
+    // 打火石 → 激活地狱传送门
+    if (slot?.item === 'flint_and_steel') {
+      if (this.portalSystem.tryActivateNetherPortal(tx, ty, tz)) {
+        // 消耗耐久
+        if (slot.durabilityDamage === undefined) slot.durabilityDamage = 0
+        slot.durabilityDamage++
+        const itemDef = getItemDefinition(slot.item)
+        if (itemDef?.durability && slot.durabilityDamage >= itemDef.durability) {
+          slot.item = null
+          slot.count = 0
+          slot.durabilityDamage = 0
+        }
+        return true
+      }
+    }
+
+    // 末影之眼 → 激活末地传送门框架
+    if (slot?.item === 'ender_eye') {
+      if (this.portalSystem.tryActivateEndPortalFrame(tx, ty, tz)) {
+        slot.count--
+        if (slot.count <= 0) {
+          slot.item = null
+          slot.count = 0
+        }
+        return true
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * 通过方块交互目标尝试激活传送门
+   */
+  private tryActivatePortalOnTarget(): boolean {
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    if (!slot?.item) return false
+
+    // 只有打火石和末影之眼能激活传送门
+    if (slot.item !== 'flint_and_steel' && slot.item !== 'ender_eye') return false
+
+    // 获取目标方块
+    const target = this.blockInteraction.getTargetBlock()
+    if (target) {
+      // 有目标方块：对该方块位置尝试激活
+      return this.tryActivatePortal(target.position.x, target.position.y, target.position.z)
+    }
+
+    // 无目标方块：对射线命中的第一个方块位置尝试激活
+    const camPos = this.cameraManager.activeCamera.position.clone()
+    const camDir = this.cameraManager.getForwardDirection()
+    const hit = this.chunkManager.raycast(camPos, camDir, 6)
+    if (hit) {
+      return this.tryActivatePortal(hit.position.x, hit.position.y, hit.position.z)
+    }
+    return false
+  }
+
+  /**
+   * 虚空保护：在指定 x/z 位置查找安全的 Y 坐标
+   * 搜索附近已加载的固体方块，返回最高方块顶部 Y 值
+   */
+  private findSafeY(cx: number, cz: number): number {
+    // 先尝试精确位置
+    const directHeight = this.chunkManager.getHeightAt(cx, cz)
+    if (directHeight > 0) return directHeight
+
+    // 搜索附近 16 格范围
+    for (let radius = 1; radius <= 16; radius += 2) {
+      for (const [dx, dz] of [[radius, 0], [-radius, 0], [0, radius], [0, -radius]]) {
+        const h = this.chunkManager.getHeightAt(cx + dx, cz + dz)
+        if (h > 0) return h
+      }
+    }
+    return 0
+  }
+
   dispose(): void {
     this.gameLoop.stop()
     this.stopBreaking()
@@ -1348,6 +2059,9 @@ export class Engine {
     this.redstoneSystem.dispose()
     this.entityManager.dispose()
     this.sky.dispose()
+    this.cloudSystem.dispose()
+    this.weatherSystem.dispose()
+    this.weatherAudio.dispose()
     this.renderer.dispose()
     this.textureAtlas.dispose()
     this.chunkManager.dispose()

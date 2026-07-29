@@ -5,19 +5,19 @@ export const blockVertexShader = /* glsl */ `
 uniform float time;
 
 attribute float animFlag; // 1.0 = water, 0.0 = other
-attribute float vertexShade;
+attribute float ao;
 
 varying vec2 vUv;
 varying vec3 vNormal;
 varying vec3 vWorldPos;
 varying float vFogDepth;
 varying float vIsWater;
-varying float vVertexShade;
+varying float vAO;
 
 void main() {
   vNormal = normalize(normalMatrix * normal);
   vIsWater = animFlag;
-  vVertexShade = vertexShade;
+  vAO = ao;
 
   // Animate water UVs for flow effect
   vec2 animUv = uv;

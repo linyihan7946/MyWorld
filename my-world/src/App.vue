@@ -2,8 +2,18 @@
   <div class="game-container">
     <div ref="gameCanvas" class="game-canvas"></div>
     <HUD />
+    <MobileControls
+      v-if="playerStore.controlMode === 'mobile' && started"
+      :selectedSlot="playerStore.selectedSlot"
+      @move="onMobileMove"
+      @action="onMobileAction"
+      @openInventory="onMobileInventory"
+      @toggleCamera="onMobileCamera"
+      @selectSlot="onMobileSelectSlot"
+    />
     <InventoryScreen />
     <ContainerScreen />
+    <CommandBlockUI ref="commandBlockUI" />
     <DebugOverlay v-if="showDebug" />
 
     <!-- Death screen -->
@@ -38,6 +48,9 @@
             <span class="mc-btn-text">加载存档</span>
             <span v-if="saveTimestamp" class="mc-btn-sub">保存于 {{ formatTimestamp(saveTimestamp) }}</span>
           </button>
+          <button v-if="hasSave" class="mc-btn delete-btn" @click="deleteSavedGame">
+            <span class="mc-btn-text">删除存档</span>
+          </button>
         </div>
 
         <div class="menu-seed">
@@ -71,7 +84,9 @@ import { SaveSystem } from '@/gameplay/SaveSystem'
 import HUD from '@/ui/components/HUD.vue'
 import InventoryScreen from '@/ui/components/InventoryScreen.vue'
 import ContainerScreen from '@/ui/components/ContainerScreen.vue'
+import CommandBlockUI from '@/ui/components/CommandBlockUI.vue'
 import DebugOverlay from '@/ui/components/DebugOverlay.vue'
+import MobileControls from '@/ui/components/MobileControls.vue'
 
 const gameCanvas = ref<HTMLElement | null>(null)
 let engine: Engine | null = null
@@ -88,6 +103,7 @@ const saveTimestamp = ref(SaveSystem.getSaveTimestamp())
 
 const playerStore = usePlayerStore()
 const uiStore = useUIStore()
+const commandBlockUI = ref<InstanceType<typeof CommandBlockUI> | null>(null)
 
 /**
  * 将字符串种子哈希为数字
@@ -144,6 +160,11 @@ const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loa
     engine.eventBus.on('player:underwater', (underwater: boolean) => {
       playerStore.isUnderwater = underwater
     })
+
+    // 命令方块UI事件
+    engine.eventBus.on('commandBlock:open', (data: { x: number; y: number; z: number; blockType: number }) => {
+      commandBlockUI.value?.open(data)
+    })
   } catch (err: any) {
     console.error('Game init error:', err)
     started.value = false
@@ -163,13 +184,59 @@ const loadSavedGame = () => {
   }
 }
 
+const deleteSavedGame = () => {
+  if (confirm('确定要删除存档吗？此操作不可恢复！')) {
+    SaveSystem.deleteSave()
+    hasSave.value = SaveSystem.hasSave()
+    saveTimestamp.value = SaveSystem.getSaveTimestamp()
+    gameMessage.value = '存档已删除'
+    setTimeout(() => { gameMessage.value = '' }, 3000)
+  }
+}
+
 const respawn = () => {
   if (engine) {
     engine.respawn()
   }
 }
 
+// ── Mobile control handlers ──
+const onMobileMove = (forward: number, right: number) => {
+  engine?.inputManager.setVirtualMovement(forward, right)
+}
+const onMobileAction = (action: string, pressed: boolean) => {
+  engine?.inputManager.setVirtualAction(action, pressed)
+}
+const onMobileInventory = () => {
+  engine?.inputManager.setVirtualAction('inventory', true)
+  setTimeout(() => engine?.inputManager.setVirtualAction('inventory', false), 100)
+}
+const onMobileCamera = () => {
+  engine?.inputManager.setVirtualAction('toggleCamera', true)
+  setTimeout(() => engine?.inputManager.setVirtualAction('toggleCamera', false), 100)
+}
+const onMobileSelectSlot = (slot: number) => {
+  engine?.inputManager.setVirtualAction(`slot${slot}`, true)
+  setTimeout(() => engine?.inputManager.setVirtualAction(`slot${slot}`, false), 100)
+}
+
+// Auto-detect control mode
+playerStore.autoDetectControlMode()
+
+// 横竖屏切换时强制重新计算画布尺寸
+const handleOrientationChange = () => {
+  // 等浏览器完成旋转后再触发 resize
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'))
+  }, 200)
+}
+window.addEventListener('orientationchange', handleOrientationChange)
+// 部分安卓浏览器不触发 orientationchange，监听 resize 兜底
+window.addEventListener('resize', handleOrientationChange)
+
 onUnmounted(() => {
+  window.removeEventListener('orientationchange', handleOrientationChange)
+  window.removeEventListener('resize', handleOrientationChange)
   engine?.dispose()
   engine = null
 })
@@ -180,8 +247,8 @@ onUnmounted(() => {
 html, body { width: 100%; height: 100%; overflow: hidden; }
 
 .game-container {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
   background: #000;
@@ -374,6 +441,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   border-color: #8ac06c #4a7a2c #4a7a2c #8ac06c;
 }
 
+.mc-btn.delete-btn {
+  background: #8a3c3c;
+  border-color: #b05c5c #6a1c1c #6a1c1c #b05c5c;
+}
+
+.mc-btn.delete-btn:hover {
+  background: #9a4c4c;
+  border-color: #c06c6c #7a2c2c #7a2c2c #c06c6c;
+}
+
 .mc-btn-text {
   font-weight: bold;
 }
@@ -440,5 +517,71 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   border-radius: 4px;
   font-size: 14px;
   white-space: nowrap;
+}
+
+/* ── 横屏适配 ── */
+@media (orientation: landscape), (max-height: 500px) {
+  .minecraft-title {
+    font-size: 42px;
+    letter-spacing: 4px;
+  }
+  .minecraft-subtitle {
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .menu-title-area {
+    margin-bottom: 8px;
+  }
+  .menu-content {
+    gap: 8px;
+    padding: 10px 20px;
+  }
+  .menu-buttons {
+    width: 320px;
+    gap: 4px;
+  }
+  .mc-btn {
+    padding: 6px 16px;
+    min-height: 34px;
+    font-size: 14px;
+  }
+  .mc-btn-sub {
+    font-size: 10px;
+    margin-top: 1px;
+  }
+  .menu-seed {
+    width: 320px;
+    margin-top: 6px;
+  }
+  .mc-label {
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+  .mc-input {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .menu-footer {
+    margin-top: 8px;
+    font-size: 10px;
+  }
+  .game-message {
+    bottom: 40px;
+    font-size: 12px;
+    padding: 6px 14px;
+  }
+
+  /* 死亡屏幕 */
+  .death-content h1 {
+    font-size: 40px;
+  }
+  .death-content .death-stats {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  .death-content button {
+    font-size: 18px;
+    padding: 10px 40px;
+  }
 }
 </style>

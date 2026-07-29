@@ -11,36 +11,34 @@ uniform vec3 sunDirection;
 uniform vec3 sunColor;
 uniform float ambientLight;
 uniform int pointLightCount;
-uniform vec3 pointLightPositions[32];
-uniform vec3 pointLightColors[32];
+uniform vec3 pointLightPositions[16];
+uniform vec3 pointLightColors[16];
 
 varying vec2 vUv;
 varying vec3 vNormal;
 varying vec3 vWorldPos;
 varying float vFogDepth;
 varying float vIsWater;
-varying float vVertexShade;
+varying float vAO;
 
 void main() {
   vec4 texColor = texture2D(atlas, vUv);
 
   if (texColor.a < 0.1) discard;
 
-  // Water: override color and alpha for translucent look
   float alpha = texColor.a;
   vec3 color = texColor.rgb;
   if (vIsWater > 0.5) {
-    // Water: blue tint, semi-transparent
-    color = mix(color, vec3(0.15, 0.4, 0.8), 0.4);
-    alpha = 0.6;
+    color = mix(color, vec3(0.12, 0.35, 0.75), 0.45);
+    alpha = 0.55;
   }
 
-  // Directional lighting (sun)
+  // ── Directional sun light ──
   float ndl = max(dot(vNormal, normalize(sunDirection)), 0.0);
-  vec3 diffuse = sunColor * ndl * 0.4;
+  vec3 diffuse = sunColor * mix(0.15, 0.55, ndl);
   vec3 ambient = vec3(ambientLight);
 
-  // Face-based shading
+  // Face-based directional bias (preserves cube readability)
   float faceShade = 1.0;
   if (abs(vNormal.y) > 0.5) {
     faceShade = vNormal.y > 0.0 ? 1.0 : 0.5;
@@ -50,18 +48,26 @@ void main() {
     faceShade = 0.7;
   }
 
+  // ── Local point lights ──
+  // 缩减到 16 盏；用距离平方提前跳过远距离灯
   vec3 localLight = vec3(0.0);
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < 16; i++) {
     if (i >= pointLightCount) break;
-    float lightDistance = distance(vWorldPos, pointLightPositions[i]);
-    float attenuation = max(0.0, 1.0 - lightDistance / 8.0);
-    localLight += pointLightColors[i] * attenuation * attenuation * 1.8;
+    vec3 diff = vWorldPos - pointLightPositions[i];
+    float distSq = dot(diff, diff);
+    if (distSq > 64.0) continue;
+    float attenuation = 1.0 - sqrt(distSq) * 0.125;
+    if (attenuation <= 0.0) continue;
+    attenuation *= attenuation;
+    localLight += pointLightColors[i] * attenuation * 2.0;
   }
 
-  vec3 lighting = (ambient + diffuse) * faceShade * vVertexShade + localLight;
-  vec3 finalColor = color * lighting;
+  // ── Combine ──
+  float aoFactor = mix(0.5, 1.0, vAO);
+  vec3 sunLighting = (ambient + diffuse) * faceShade * aoFactor;
+  vec3 finalColor = color * (sunLighting + localLight);
 
-  // Fog
+  // ── Distance fog ──
   float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
   finalColor = mix(finalColor, fogColor, fogFactor);
 

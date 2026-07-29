@@ -124,6 +124,14 @@ export abstract class Character extends Entity {
 
   protected abstract updateAI(dt: number): void
 
+  /**
+   * Public wrapper for animation updates — used by player character
+   * which has its movement driven externally instead of via updateAI().
+   */
+  updateAnimationsPublic(dt: number): void {
+    this.updateAnimations(dt)
+  }
+
   protected applyMovement(dt: number): void {
     if (this.targetPosition) {
       const dir = new THREE.Vector3()

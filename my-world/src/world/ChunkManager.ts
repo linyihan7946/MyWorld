@@ -19,7 +19,7 @@ export class ChunkManager {
 
   private loadQueue: string[] = []
   private queuedLoads = new Set<string>()
-  private maxLoadsPerFrame = 2
+  private maxLoadsPerFrame = 4  // 提高每帧加载量，减少掉入虚空的概率
   private lightSources = new Map<string, { position: THREE.Vector3; color: THREE.Color; chunkKey: string }>()
 
   // Flowing water stores a level from 1..7. Generated water and water placed by
@@ -28,6 +28,9 @@ export class ChunkManager {
   private fluidQueue: Array<{ x: number; y: number; z: number }> = []
   private queuedFluids = new Set<string>()
   private fluidAccumulator = 0
+
+  /** 屏障方块可见性 - 只有手持屏障时才显示 */
+  public showBarriers = false
 
   constructor(scene: THREE.Scene, mesher: ChunkMesher, generator: WorldGenerator) {
     this.scene = scene
@@ -121,7 +124,7 @@ export class ChunkManager {
       if (!chunk.dirty || rebuilt >= maxRebuilds) continue
 
       const neighbors = this.getNeighbors(chunk)
-      const result = this.mesher.generateMesh(chunk, neighbors)
+      const result = this.mesher.generateMesh(chunk, neighbors, this.showBarriers)
 
       // Remove old meshes
       const old = this.meshData.get(key)
@@ -141,6 +144,13 @@ export class ChunkManager {
   }
 
   /**
+   * 仅重建脏网格，不重新计算区块加载（用于玩家未跨区块时的每帧刷新）
+   */
+  public rebuildDirtyOnly(): void {
+    this.rebuildDirtyMeshes(3)
+  }
+
+  /**
    * 更新水面动画时间
    */
   updateAnimation(time: number): void {
@@ -152,7 +162,7 @@ export class ChunkManager {
       .map(light => ({ ...light, distanceSq: light.position.distanceToSquared(center) }))
       .filter(light => light.distanceSq <= 48 * 48)
       .sort((a, b) => a.distanceSq - b.distanceSq)
-      .slice(0, 32)
+      .slice(0, 16)
     this.mesher.updateLights(nearest)
   }
 
@@ -172,8 +182,8 @@ export class ChunkManager {
       updates++
     }
 
-    // 流体一次可能改变多个方块；完成本批次后统一刷新网格。
-    this.rebuildDirtyMeshes(Infinity)
+    // 流体一次可能改变多个方块；完成本批次后统一刷新网格（限制数量防止卡顿）
+    this.rebuildDirtyMeshes(6)
   }
 
   private getNeighbors(chunk: Chunk): { px?: Chunk; nx?: Chunk; pz?: Chunk; nz?: Chunk } {
@@ -341,7 +351,7 @@ export class ChunkManager {
     if (!chunk.dirty) return
 
     const neighbors = this.getNeighbors(chunk)
-    const result = this.mesher.generateMesh(chunk, neighbors)
+    const result = this.mesher.generateMesh(chunk, neighbors, this.showBarriers)
 
     // Remove old meshes
     const old = this.meshData.get(key)
@@ -362,6 +372,21 @@ export class ChunkManager {
     for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const chunk = this.chunks.get(this.chunkKey(cx + dx, cz + dz))
       if (chunk?.dirty) this.rebuildChunkMesh(chunk)
+    }
+  }
+
+  /** 标记世界坐标处方块所在区块为dirty (用于方块状态变更后触发重建) */
+  public markBlockDirty(worldX: number, _worldY: number, worldZ: number): void {
+    const cx = Math.floor(worldX / CHUNK_SIZE)
+    const cz = Math.floor(worldZ / CHUNK_SIZE)
+    this.markDirty(cx, cz)
+    this.markHorizontalNeighborsDirty(cx, cz)
+  }
+
+  /** 标记所有已加载区块为dirty (用于全局渲染条件变更，如屏障可见性切换) */
+  public markAllDirty(): void {
+    for (const [, chunk] of this.chunks) {
+      chunk.dirty = true
     }
   }
 

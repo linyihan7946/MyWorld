@@ -78,11 +78,23 @@
             :key="category.id"
             type="button"
             class="creative-tab"
-            :class="{ active: creativeCategory === category.id }"
+            :class="{
+              active: creativeCategory === category.id,
+              locked: category.id === 'command' && !playerStore.canUseCommandBlocks
+            }"
             @click.stop="switchCreativeCategory(category.id)"
-          >{{ category.name }} ({{ categoryCounts[category.id] || 0 }})</button>
+          >
+            {{ category.name }}
+            <span v-if="category.id === 'command' && !playerStore.canUseCommandBlocks">🔒</span>
+            <span v-else>({{ categoryCounts[category.id] || 0 }})</span>
+          </button>
         </div>
-        <div class="creative-label">{{ activeCreativeCategoryName }}（{{ creativeItems.length }}）</div>
+        <div class="creative-label">
+          {{ activeCreativeCategoryName }}（{{ creativeItems.length }}）
+          <span v-if="creativeCategory === 'command' && !playerStore.canUseCommandBlocks" class="cheat-warning">
+            ⚠️ 需要创造模式 + 按F键开启作弊才能获取指令方块
+          </span>
+        </div>
         <div class="creative-grid">
           <button
             v-for="entry in creativeItems"
@@ -179,7 +191,7 @@ const playerStore = usePlayerStore()
 const containerStore = useContainerStore()
 const craftingSystem = new CraftingSystem()
 
-type CreativeCategory = 'blocks' | 'redstone' | 'tools' | 'combat' | 'armor' | 'items'
+type CreativeCategory = 'blocks' | 'redstone' | 'tools' | 'combat' | 'armor' | 'items' | 'command'
 interface CreativeEntry { item: string; name: string; blockType?: BlockType; stackSize: number; category: CreativeCategory }
 
 const creativeCategory = ref<CreativeCategory>('blocks')
@@ -187,8 +199,14 @@ const creativeCategories: Array<{ id: CreativeCategory; name: string }> = [
   { id: 'blocks', name: '方块' }, { id: 'redstone', name: '红石' },
   { id: 'tools', name: '工具' }, { id: 'combat', name: '战斗' },
   { id: 'armor', name: '盔甲' }, { id: 'items', name: '物品' },
+  { id: 'command', name: '⚡ 指令' },
 ]
 const redstoneItems = new Set(['redstone', 'redstone_block', 'redstone_dust', 'piston', 'sticky_piston', 'repeater', 'comparator', 'observer', 'hopper'])
+const commandItems = new Set([
+  'command_block', 'chain_command_block', 'repeat_command_block',
+  'barrier', 'structure_block', 'jigsaw_block', 'light_block', 'structure_void',
+  'debug_stick',
+])
 
 const allCreativeItems = computed<CreativeEntry[]>(() => {
   const entries: CreativeEntry[] = Object.values(BLOCK_REGISTRY)
@@ -196,14 +214,16 @@ const allCreativeItems = computed<CreativeEntry[]>(() => {
     .sort((a, b) => a.id - b.id)
     .map(definition => {
       const item = String(BlockType[definition.id]).toLowerCase()
-      return { item, name: definition.name, blockType: definition.id, stackSize: 64,
-        category: redstoneItems.has(item) ? 'redstone' : 'blocks' }
+      let category: CreativeCategory = redstoneItems.has(item) ? 'redstone' : 'blocks'
+      if (commandItems.has(item)) category = 'command'
+      return { item, name: definition.name, blockType: definition.id, stackSize: 64, category }
     })
   const knownBlocks = new Set(entries.map(entry => entry.item))
   for (const definition of Object.values(ITEM_REGISTRY)) {
     if (knownBlocks.has(definition.id)) continue
     let category: CreativeCategory = 'items'
     if (redstoneItems.has(definition.id)) category = 'redstone'
+    else if (commandItems.has(definition.id)) category = 'command'
     else if (definition.type === 'tool') category = 'tools'
     else if (definition.type === 'weapon') category = 'combat'
     else if (definition.type === 'armor') category = 'armor'
@@ -225,7 +245,11 @@ const categoryCounts = computed(() => {
 })
 
 const creativeItems = computed(() => {
-  const filtered = allCreativeItems.value.filter(entry => entry.category === creativeCategory.value)
+  let filtered = allCreativeItems.value.filter(entry => entry.category === creativeCategory.value)
+  // 指令专属物品需要作弊开启才显示
+  if (!playerStore.canUseCommandBlocks && creativeCategory.value === 'command') {
+    filtered = []
+  }
   return filtered
 })
 const activeCreativeCategoryName = computed(() => creativeCategories.find(category => category.id === creativeCategory.value)?.name ?? '')
@@ -832,6 +856,34 @@ onUnmounted(() => {
   color: #000;
 }
 
+.creative-tab.locked {
+  background: #666;
+  color: #999;
+  border-color: #555 #444 #444 #555;
+  opacity: 0.6;
+}
+
+.creative-tab.locked:hover {
+  background: #777;
+}
+
+.cheat-warning {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 3px 8px;
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid #f44336;
+  border-radius: 3px;
+  color: #f44336;
+  font-size: 11px;
+  animation: blink 1.5s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .creative-label {
   font-size: 12px;
   color: #444;
@@ -937,7 +989,7 @@ onUnmounted(() => {
   color: white;
   text-shadow: 1px 1px 0 #000;
   pointer-events: none;
-  z-index: 100;
+  z-index: 9999;
   transform: translate(-50%, -50%);
   border: 2px solid rgba(255, 255, 255, 0.5);
 }

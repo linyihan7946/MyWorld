@@ -185,6 +185,13 @@ export const RECIPES: Recipe[] = [
   { type: 'shaped', pattern: ['D', 'D', 'S'], keys: { D: 'diamond', S: 'stick' }, result: { item: 'diamond_sword', count: 1 } },
   { type: 'shaped', pattern: ['N', 'N', 'S'], keys: { N: 'netherite_ingot', S: 'stick' }, result: { item: 'netherite_sword', count: 1 } },
 
+  // Steel tools (best tier — above netherite)
+  { type: 'shaped', pattern: ['SSS', ' W ', ' W '], keys: { S: 'steel_ingot', W: 'stick' }, result: { item: 'steel_pickaxe', count: 1 } },
+  { type: 'shaped', pattern: ['SS', 'SW', ' W'], keys: { S: 'steel_ingot', W: 'stick' }, result: { item: 'steel_axe', count: 1 } },
+  { type: 'shaped', pattern: ['S', 'W', 'W'], keys: { S: 'steel_ingot', W: 'stick' }, result: { item: 'steel_shovel', count: 1 } },
+  { type: 'shaped', pattern: ['SS', ' W', ' W'], keys: { S: 'steel_ingot', W: 'stick' }, result: { item: 'steel_hoe', count: 1 } },
+  { type: 'shaped', pattern: ['S', 'S', 'W'], keys: { S: 'steel_ingot', W: 'stick' }, result: { item: 'steel_sword', count: 1 } },
+
   // ==========================================
   // === 武器：远程 ===
   // ==========================================
@@ -243,6 +250,12 @@ export const RECIPES: Recipe[] = [
   { type: 'shaped', pattern: ['NNN', 'N N', 'N N'], keys: { N: 'netherite_ingot' }, result: { item: 'netherite_leggings', count: 1 } },
   { type: 'shaped', pattern: ['N N', 'N N'], keys: { N: 'netherite_ingot' }, result: { item: 'netherite_boots', count: 1 } },
 
+  // Steel armor (best tier)
+  { type: 'shaped', pattern: ['SSS', 'S S'], keys: { S: 'steel_ingot' }, result: { item: 'steel_helmet', count: 1 } },
+  { type: 'shaped', pattern: ['S S', 'SSS', 'SSS'], keys: { S: 'steel_ingot' }, result: { item: 'steel_chestplate', count: 1 } },
+  { type: 'shaped', pattern: ['SSS', 'S S', 'S S'], keys: { S: 'steel_ingot' }, result: { item: 'steel_leggings', count: 1 } },
+  { type: 'shaped', pattern: ['S S', 'S S'], keys: { S: 'steel_ingot' }, result: { item: 'steel_boots', count: 1 } },
+
   // 龟壳头盔 (简化)
   { type: 'shaped', pattern: ['SSS', 'S S'], keys: { S: 'iron_ingot' }, result: { item: 'iron_helmet', count: 1 } },
 
@@ -258,6 +271,7 @@ export const RECIPES: Recipe[] = [
   { type: 'shaped', pattern: ['LLL', 'LLL', 'LLL'], keys: { L: 'lapis_lazuli' }, result: { item: 'lapis_block', count: 1 } },
   { type: 'shaped', pattern: ['RRR', 'RRR', 'RRR'], keys: { R: 'redstone' }, result: { item: 'redstone_block', count: 1 } },
   { type: 'shaped', pattern: ['QQQ', 'QQQ', 'QQQ'], keys: { Q: 'quartz' }, result: { item: 'quartz_block', count: 1 } },
+  { type: 'shaped', pattern: ['SSS', 'SSS', 'SSS'], keys: { S: 'steel_ingot' }, result: { item: 'steel_block', count: 1 } },
 
   // 反向：块 → 9个矿物
   { type: 'shapeless', ingredients: ['iron_block'], result: { item: 'iron_ingot', count: 9 } },
@@ -269,6 +283,7 @@ export const RECIPES: Recipe[] = [
   { type: 'shapeless', ingredients: ['lapis_block'], result: { item: 'lapis_lazuli', count: 9 } },
   { type: 'shapeless', ingredients: ['redstone_block'], result: { item: 'redstone', count: 9 } },
   { type: 'shapeless', ingredients: ['quartz_block'], result: { item: 'quartz', count: 9 } },
+  { type: 'shapeless', ingredients: ['steel_block'], result: { item: 'steel_ingot', count: 9 } },
 
   // ==========================================
   // === 建筑材料 ===

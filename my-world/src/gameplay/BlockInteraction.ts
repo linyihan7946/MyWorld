@@ -6,6 +6,7 @@ import { EventBus } from '@/core/EventBus'
 import { calculateHitsNeeded, canHarvestDrop, shouldConsumeDurability, getMiningSpeed } from './MiningMechanics'
 import { getItemDefinition } from '@/types/items'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
+import { getEnchantLevel } from './EnchantmentSystem'
 
 /**
  * BlockInteraction - 方块交互系统
@@ -131,8 +132,12 @@ export class BlockInteraction {
       return { breaking: false, progress: 0, canHarvest: true }
     }
 
-    // Increment break progress using MC-accurate hit count
-    this.breakProgress++
+    // Increment break progress (Efficiency enchantment speeds up mining)
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    const effLvl = getEnchantLevel(slot?.enchantments, 'efficiency')
+    const hitPower = 1 + effLvl * 0.3 // Efficiency I=1.3x, V=2.5x
+    this.breakProgress += hitPower
     const hitsNeeded = Math.max(1, this.cachedHitsNeeded)
     const progress = this.breakProgress / hitsNeeded
 
@@ -157,7 +162,7 @@ export class BlockInteraction {
     return { breaking: true, progress, canHarvest: harvest }
   }
 
-  /** 消耗当前手持工具的 1 点耐久 */
+  /** 消耗当前手持工具的 1 点耐久（Unbreaking 有几率不消耗） */
   private consumeToolDurability(): void {
     const inv = useInventoryStore()
     const slot = inv.hotbar[inv.selectedSlot]
@@ -166,9 +171,11 @@ export class BlockInteraction {
     const itemDef = getItemDefinition(slot.item)
     if (!itemDef || !itemDef.durability) return
 
-    // Track damage in a simple way: reduce count when durability is reached
-    // For tools, we store damage as a negative offset on count or use a custom field
-    // Simplest approach: use a durability tracker on the slot
+    // Unbreaking: (level / (level+1)) chance to skip durability cost
+    const unbLvl = getEnchantLevel(slot.enchantments, 'unbreaking')
+    const saveChance = unbLvl / (unbLvl + 1)
+    if (Math.random() < saveChance) return
+
     if (!slot.durabilityDamage) slot.durabilityDamage = 0
     slot.durabilityDamage++
 
