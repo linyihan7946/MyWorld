@@ -1,11 +1,12 @@
 <template>
   <div class="game-container">
     <div ref="gameCanvas" class="game-canvas"></div>
-    <HUD />
+    <HUD v-if="uiStore.showHUD" />
     <MobileControls
       v-if="playerStore.controlMode === 'mobile' && started"
       :selectedSlot="playerStore.selectedSlot"
       @move="onMobileMove"
+      @look="onMobileLook"
       @action="onMobileAction"
       @openInventory="onMobileInventory"
       @toggleCamera="onMobileCamera"
@@ -14,7 +15,17 @@
     <InventoryScreen />
     <ContainerScreen />
     <CommandBlockUI ref="commandBlockUI" />
-    <DebugOverlay v-if="showDebug" />
+    <DebugOverlay />
+
+    <!-- 暂停菜单覆盖层 -->
+    <div v-if="uiStore.showPause" class="pause-overlay" @click.self="uiStore.showPause = false">
+      <div class="pause-menu">
+        <h2>游戏暂停</h2>
+        <button @click="uiStore.showPause = false; tryLockPointer()">继续游戏</button>
+        <button @click="toggleFullscreen">全屏切换 (F11)</button>
+        <button @click="uiStore.showPause = false; started = false; engine?.dispose(); engine = null">返回主菜单</button>
+      </div>
+    </div>
 
     <!-- Death screen -->
     <div v-if="playerStore.isDead" class="death-screen">
@@ -65,8 +76,43 @@
         </div>
 
         <div class="menu-footer">
-          <span class="version-text">My World v0.1</span>
+          <span class="version-text">My World v0.2</span>
           <span class="copyright-text">Not an official Minecraft product</span>
+        </div>
+
+        <!-- 功能一览 -->
+        <div class="menu-features">
+          <div class="feature-col">
+            <div class="feat-title">🎮 操作</div>
+            <div class="feat-line">WASD 移动 · Space 跳跃</div>
+            <div class="feat-line">Shift 奔跑 · 双击空格 飞行</div>
+            <div class="feat-line">鼠标左键 挖掘 · 右键 放置</div>
+            <div class="feat-line">E 背包 · 1-9 热键栏</div>
+            <div class="feat-line">V/F5 切换视角</div>
+          </div>
+          <div class="feature-col">
+            <div class="feat-title">⚡ 功能键</div>
+            <div class="feat-line">G 切换创造/生存</div>
+            <div class="feat-line">F 作弊开关 · Y 切换天气</div>
+            <div class="feat-line">H 保存 · R 手机/PC模式</div>
+            <div class="feat-line">Esc 暂停 · F11 全屏</div>
+            <div class="feat-line">F1 隐藏HUD · F3 调试屏幕</div>
+          </div>
+          <div class="feature-col">
+            <div class="feat-title">🔧 F3 调试</div>
+            <div class="feat-line">F3+A 刷新区块</div>
+            <div class="feat-line">F3+B 显示碰撞箱</div>
+            <div class="feat-line">F3+G 显示区块边界</div>
+            <div class="feat-line">F3+H 高级提示框</div>
+          </div>
+          <div class="feature-col">
+            <div class="feat-title">🔴 红石</div>
+            <div class="feat-line">红石粉 · 中继器 · 比较器</div>
+            <div class="feat-line">活塞 · 粘性活塞 · 侦测器</div>
+            <div class="feat-line">拉杆 · 漏斗</div>
+            <div class="feat-line">右键中继器 切换延迟</div>
+            <div class="feat-line">右键比较器 切换减法</div>
+          </div>
         </div>
 
         <div v-if="gameMessage" class="game-message">{{ gameMessage }}</div>
@@ -98,7 +144,6 @@ import MobileControls from '@/ui/components/MobileControls.vue'
 const gameCanvas = ref<HTMLElement | null>(null)
 let engine: Engine | null = null
 const started = ref(false)
-const showDebug = ref(true)
 const seedInput = ref('')
 const superflatMode = ref(false)
 const gameMode = ref<'survival' | 'creative'>('survival')
@@ -217,6 +262,9 @@ const respawn = () => {
 const onMobileMove = (forward: number, right: number) => {
   engine?.inputManager.setVirtualMovement(forward, right)
 }
+const onMobileLook = (dx: number, dy: number) => {
+  engine?.inputManager.setVirtualLook(dx, dy)
+}
 const onMobileAction = (action: string, pressed: boolean) => {
   engine?.inputManager.setVirtualAction(action, pressed)
 }
@@ -231,6 +279,22 @@ const onMobileCamera = () => {
 const onMobileSelectSlot = (slot: number) => {
   engine?.inputManager.setVirtualAction(`slot${slot}`, true)
   setTimeout(() => engine?.inputManager.setVirtualAction(`slot${slot}`, false), 100)
+}
+
+// Pointer lock 辅助
+const tryLockPointer = () => {
+  if (engine && !engine.inputManager.locked) {
+    gameCanvas.value?.querySelector('canvas')?.requestPointerLock()
+  }
+}
+
+// 全屏切换
+const toggleFullscreen = () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen()
+  } else {
+    document.documentElement.requestFullscreen()
+  }
 }
 
 // Auto-detect control mode
@@ -297,6 +361,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 .game-canvas {
   width: 100%;
   height: 100%;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 
 .game-canvas canvas {
@@ -404,10 +470,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   padding: 20px;
   position: relative;
   z-index: 1;
+  max-height: 96vh;
+  overflow-y: auto;
 }
 
 .menu-title-area {
@@ -537,13 +605,40 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 }
 
 .menu-footer {
-  margin-top: 20px;
+  margin-top: 16px;
   width: 400px;
   max-width: 90vw;
   display: flex;
   justify-content: space-between;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── 功能一览 ── */
+.menu-features {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  width: 620px;
+  max-width: 92vw;
+}
+.feature-col {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 4px;
+  padding: 8px 12px;
+  min-width: 135px;
+  text-align: left;
+}
+.feat-title {
+  font-size: 12px; font-weight: bold; color: #ffdd57;
+  margin-bottom: 4px; text-shadow: 1px 1px 0 #000;
+}
+.feat-line {
+  font-size: 10px; color: rgba(255,255,255,0.58);
+  line-height: 1.5; font-family: 'Courier New', monospace;
 }
 
 .game-message {
@@ -660,4 +755,38 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   25% { transform: rotate(90deg); }
   75% { transform: rotate(90deg); }
 }
+
+/* ── 暂停菜单 ── */
+.pause-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.pause-menu {
+  background: #c6c6c6;
+  border: 3px solid #555;
+  padding: 30px 40px;
+  border-radius: 4px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 260px;
+}
+.pause-menu h2 { color: #333; font-size: 24px; margin-bottom: 8px; }
+.pause-menu button {
+  padding: 10px 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  border: 2px solid #555;
+  background: #999;
+  color: #222;
+  cursor: pointer;
+  font-weight: bold;
+}
+.pause-menu button:hover { background: #b0b0b0; }
 </style>

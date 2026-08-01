@@ -48,14 +48,15 @@ export class ChunkMesher {
       atlasSize: { value: ATLAS_SIZE },
       fogColor: { value: new THREE.Color(0x87CEEB) },
       fogNear: { value: 48.0 },
-      fogFar: { value: 160.0 },
+      fogFar: { value: 200.0 },
       sunDirection: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
-      sunColor: { value: new THREE.Color(1.0, 0.95, 0.9) },
+      sunColor: { value: new THREE.Color(1.0, 0.97, 0.92) },
       ambientLight: { value: 0.5 },
+      uCameraPos: { value: new THREE.Vector3() },
       time: { value: 0.0 },
       pointLightCount: { value: 0 },
-      pointLightPositions: { value: Array.from({ length: 16 }, () => new THREE.Vector3()) },
-      pointLightColors: { value: Array.from({ length: 16 }, () => new THREE.Color()) },
+      pointLightPositions: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) },
+      pointLightColors: { value: Array.from({ length: 8 }, () => new THREE.Color()) },
     }
 
     this.opaqueMaterial = new THREE.ShaderMaterial({
@@ -83,16 +84,20 @@ export class ChunkMesher {
   }
 
   updateEnvironment(sunDirection: THREE.Vector3, ambientLight: number, fogColor: THREE.Color): void {
-    this.opaqueMaterial.uniforms.sunDirection.value.copy(sunDirection)
-    this.transparentMaterial.uniforms.sunDirection.value.copy(sunDirection)
-    this.opaqueMaterial.uniforms.ambientLight.value = ambientLight
-    this.transparentMaterial.uniforms.ambientLight.value = ambientLight
-    this.opaqueMaterial.uniforms.fogColor.value.copy(fogColor)
-    this.transparentMaterial.uniforms.fogColor.value.copy(fogColor)
+    for (const mat of [this.opaqueMaterial, this.transparentMaterial]) {
+      mat.uniforms.sunDirection.value.copy(sunDirection)
+      mat.uniforms.ambientLight.value = ambientLight
+      mat.uniforms.fogColor.value.copy(fogColor)
+    }
+  }
+
+  updateCamera(cameraPos: THREE.Vector3): void {
+    this.opaqueMaterial.uniforms.uCameraPos.value.copy(cameraPos)
+    this.transparentMaterial.uniforms.uCameraPos.value.copy(cameraPos)
   }
 
   updateLights(lights: Array<{ position: THREE.Vector3; color: THREE.Color }>): void {
-    const count = Math.min(16, lights.length)
+    const count = Math.min(8, lights.length)
     for (const material of [this.opaqueMaterial, this.transparentMaterial]) {
       material.uniforms.pointLightCount.value = count
       for (let i = 0; i < count; i++) {
@@ -194,13 +199,23 @@ export class ChunkMesher {
 
     // Transparent geometry data
     const tPos: number[] = [], tNorm: number[] = [], tUvs: number[] = [], tIdx: number[] = []
-    // Per-vertex flag: 1.0 = water (animate), 0.0 = other transparent
     const tAnim: number[] = [], tShade: number[] = []
     let tVert = 0
+
+    // 高度图：每列最高非空气方块，用于限制 Y 扫描上限
+    let hasHeightmap = false
+    if (chunk.heightmap) {
+      for (let i = 0; i < chunk.heightmap.length; i++) {
+        if (chunk.heightmap[i] >= 0) { hasHeightmap = true; break }
+      }
+    }
 
     for (let y = 0; y < CHUNK_HEIGHT; y++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
+          // 如果此列的 heightmap < 当前 y，则本列在此高度以上全为空
+          if (hasHeightmap && chunk.heightmap[z * CHUNK_SIZE + x] < y) continue
+
           const blockType = chunk.getBlock(x, y, z)
           if (blockType === BlockType.AIR) continue
 

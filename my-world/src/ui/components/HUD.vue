@@ -38,7 +38,20 @@
 
     <!-- Health bar (survival only) -->
     <div v-if="playerStore.gameMode === 'survival'" class="health-bar">
-      <div v-for="i in 10" :key="i" class="heart" :class="{ full: i <= playerStore.health }">♥</div>
+      <div v-for="i in 10" :key="i" class="heart" :class="{ full: i <= Math.ceil(playerStore.health / 2) }">♥</div>
+    </div>
+
+    <!-- Food bar (survival only) -->
+    <div v-if="playerStore.gameMode === 'survival'" class="food-bar">
+      <div v-for="i in 10" :key="i" class="drumstick" :class="{ full: i * 2 <= stats.foodLevel }">🍗</div>
+    </div>
+
+    <!-- XP bar -->
+    <div v-if="playerStore.gameMode === 'survival'" class="xp-bar">
+      <div class="xp-bar-bg">
+        <div class="xp-bar-fill" :style="{ width: (stats.xpProgress * 100) + '%' }"></div>
+      </div>
+      <span class="xp-level">{{ stats.xpLevel }}</span>
     </div>
 
     <!-- Oxygen bar (underwater) -->
@@ -62,9 +75,17 @@
       </div>
     </div>
 
-    <!-- Controls hint -->
-    <div class="controls-hint">
+    <!-- Controls hint (PC only) -->
+    <div v-if="playerStore.controlMode === 'pc'" class="controls-hint">
       G: 模式 | F: 作弊 | V: 视角 | Y: 天气 | R: 手机/PC | H: 保存 | 双击空格: 飞行
+    </div>
+
+    <!-- Active potion effects -->
+    <div v-if="activeEffects.length > 0" class="effects-bar">
+      <div v-for="eff in activeEffects" :key="eff.id" class="effect-icon" :style="{ background: eff.color }">
+        <span class="effect-lvl" v-if="eff.level > 1">{{ eff.level }}</span>
+        <span class="effect-time">{{ eff.time }}</span>
+      </div>
     </div>
 
     <!-- Save status notification -->
@@ -77,6 +98,8 @@ import { usePlayerStore } from '@/ui/stores/playerStore'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { ITEM_REGISTRY } from '@/types/items'
 import { getItemIconStyle } from '@/ui/itemIcon'
+import { potionEffects } from '@/gameplay/PotionEffect'
+import { playerStats, getXpProgress } from '@/gameplay/PlayerStats'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 const playerStore = usePlayerStore()
@@ -84,6 +107,32 @@ const inventoryStore = useInventoryStore()
 
 // Save notification
 const saveMessage = ref('')
+const effectTick = ref(0)
+const statsTick = ref(0)
+setInterval(() => { statsTick.value++ }, 100)
+
+const stats = computed(() => {
+  statsTick.value // 强制刷新
+  return {
+    foodLevel: playerStats.foodLevel,
+    xpLevel: playerStats.experienceLevel,
+    xpProgress: getXpProgress(),
+  }
+})
+
+// 每 0.5 秒刷新药水效果显示
+setInterval(() => { effectTick.value++ }, 500)
+const activeEffects = computed(() => {
+  effectTick.value // 强制重新计算
+  return potionEffects.getActive().map(e => ({
+    id: e.id,
+    name: potionEffects.getName(e.id),
+    level: e.level,
+    time: Math.ceil(e.duration),
+    color: '#' + potionEffects.getColor(e.id).toString(16).padStart(6, '0'),
+  }))
+})
+
 watch(() => playerStore.breakToolName, (name) => {
   if (name === '✓ 已保存' || name === '✗ 保存失败') {
     saveMessage.value = name
@@ -94,11 +143,11 @@ watch(() => playerStore.breakToolName, (name) => {
 const isNight = computed(() => playerStore.timeOfDay < 0.23 || playerStore.timeOfDay > 0.77)
 
 const weatherEmoji = computed(() => {
-  const map: Record<string, string> = { clear: '☀', rain: '🌧', snow: '❄', thunder: '⛈' }
+  const map: Record<string, string> = { clear: '☀', rain: '🌧', drizzle: '🌦', snow: '❄', blizzard: '🌨', thunder: '⛈', sandstorm: '🏜', foggy: '🌫' }
   return map[playerStore.weather] ?? '☀'
 })
 const weatherLabel = computed(() => {
-  const map: Record<string, string> = { clear: '晴', rain: '雨', snow: '雪', thunder: '雷暴' }
+  const map: Record<string, string> = { clear: '晴', rain: '雨', drizzle: '毛毛雨', snow: '雪', blizzard: '暴风雪', thunder: '雷暴', sandstorm: '沙尘暴', foggy: '浓雾' }
   return map[playerStore.weather] ?? '晴'
 })
 const formattedTime = computed(() => {
@@ -112,7 +161,9 @@ const getItemShortName = (itemId: string): string => ITEM_REGISTRY[itemId]?.name
 
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.code >= 'Digit1' && e.code <= 'Digit9') {
-    inventoryStore.selectSlot(parseInt(e.code.replace('Digit', '')) - 1)
+    const slot = parseInt(e.code.replace('Digit', '')) - 1
+    inventoryStore.selectSlot(slot)
+    playerStore.selectedSlot = slot
   }
 }
 
@@ -145,11 +196,23 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 .weather-overlay.rain {
   background: rgba(30, 45, 65, 0.15);
 }
+.weather-overlay.drizzle {
+  background: rgba(30, 40, 55, 0.08);
+}
 .weather-overlay.snow {
   background: rgba(180, 195, 210, 0.12);
 }
+.weather-overlay.blizzard {
+  background: rgba(200, 210, 225, 0.2);
+}
 .weather-overlay.thunder {
   background: rgba(10, 15, 30, 0.25);
+}
+.weather-overlay.sandstorm {
+  background: rgba(180, 140, 80, 0.18);
+}
+.weather-overlay.foggy {
+  background: rgba(180, 190, 200, 0.2);
 }
 
 .crosshair {
@@ -281,12 +344,41 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 }
 
 .health-bar {
-  position: absolute; bottom: 70px; left: 50%;
+  position: absolute; bottom: 90px; left: 50%;
   transform: translateX(-50%);
   display: flex; gap: 2px;
 }
 .heart { font-size: 16px; color: #333; text-shadow: 1px 1px 0 #000; }
 .heart.full { color: #e33; }
+
+.food-bar {
+  position: absolute; bottom: 72px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 2px;
+}
+.drumstick { font-size: 14px; color: #333; text-shadow: 1px 1px 0 #000; opacity: 0.5; }
+.drumstick.full { opacity: 1; }
+
+.xp-bar {
+  position: absolute; bottom: 56px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px;
+}
+.xp-bar-bg {
+  width: 180px; height: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.xp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #40c040, #80ff40);
+  border-radius: 3px; transition: width 0.2s;
+}
+.xp-level {
+  font-size: 14px; color: #40ff40; font-weight: bold;
+  text-shadow: 1px 1px 0 #000; font-family: monospace; min-width: 24px;
+}
 
 .oxygen-bar {
   position: absolute; bottom: 90px; left: 50%;
@@ -355,6 +447,28 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   text-shadow: 1px 1px 0 #000;
   z-index: 20;
   animation: fadeIn 0.3s ease;
+}
+
+.effects-bar {
+  position: absolute; top: 50px; right: 10px;
+  display: flex; flex-direction: column; gap: 3px;
+  z-index: 12;
+}
+.effect-icon {
+  width: 28px; height: 28px;
+  border-radius: 3px; border: 1px solid rgba(255,255,255,0.3);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.effect-lvl {
+  font-size: 10px; color: white; font-weight: bold;
+  text-shadow: 1px 1px 0 #000;
+}
+.effect-time {
+  position: absolute; bottom: 1px; left: 2px;
+  font-size: 8px; color: white;
+  text-shadow: 1px 1px 0 #000;
+  font-family: monospace;
 }
 
 @keyframes fadeIn {

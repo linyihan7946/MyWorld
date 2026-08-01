@@ -6,32 +6,35 @@
     @contextmenu.prevent
   >
     <div class="inventory-container">
-      <h2>{{ playerStore.gameMode === 'creative' ? '创造物品栏' : '背包' }}</h2>
+      <h2>{{ craftingTitle }}</h2>
 
-      <!-- Crafting area -->
+      <!-- Crafting area (2×2 in inventory, 3×3 at crafting table) -->
       <div v-if="playerStore.gameMode === 'survival'" class="craft-area">
-        <div class="craft-grid">
+        <div class="craft-grid" :class="'craft-' + craftSize + 'x' + craftSize">
           <div
-            v-for="i in 9"
+            v-for="i in (craftSize * craftSize)"
             :key="'craft-' + i"
             class="craft-slot"
             @click.left="handleSlotClick('craft', i - 1, 0, $event)"
             @click.right="handleSlotClick('craft', i - 1, 2, $event)"
+            @touchstart.prevent="onSlotTouchStart($event, 'craft', i - 1)"
+            @touchend="onSlotTouchEnd($event)"
+            @touchcancel="onSlotTouchCancel()"
           >
             <div
-              v-if="craftGrid[Math.floor((i-1)/3)][(i-1)%3]"
+              v-if="craftGrid[Math.floor((i-1)/craftSize)][(i-1)%craftSize]"
               class="item"
-              :style="getInventoryIconStyle(craftGrid[Math.floor((i-1)/3)][(i-1)%3])"
+              :style="getInventoryIconStyle(craftGrid[Math.floor((i-1)/craftSize)][(i-1)%craftSize])"
             >
               <span
-                v-if="getCraftSlotCount(Math.floor((i-1)/3), (i-1)%3) > 1"
+                v-if="getCraftSlotCount(Math.floor((i-1)/craftSize), (i-1)%craftSize) > 1"
                 class="count"
-              >{{ getCraftSlotCount(Math.floor((i-1)/3), (i-1)%3) }}</span>
+              >{{ getCraftSlotCount(Math.floor((i-1)/craftSize), (i-1)%craftSize) }}</span>
             </div>
           </div>
         </div>
         <div class="craft-arrow">→</div>
-        <div class="craft-result" @click.left="handleCraftResultClick">
+        <div class="craft-result" @click.left="handleCraftResultClick" @touchstart.prevent="onCraftResultTouchStart($event)" @touchend="onCraftResultTouchEnd($event)">
           <div
             v-if="craftResult"
             class="item result"
@@ -54,6 +57,9 @@
             :class="slot.slotType"
             @click.left="handleArmorClick(idx, 0, $event)"
             @click.right="handleArmorClick(idx, 2, $event)"
+            @touchstart.prevent="onArmorTouchStart($event, idx)"
+            @touchend="onArmorTouchEnd($event)"
+            @touchcancel="onSlotTouchCancel()"
           >
             <div
               v-if="slot.item"
@@ -119,6 +125,9 @@
           class="inv-slot"
           @click.left="handleSlotClick('main', i - 1, 0, $event)"
           @click.right="handleSlotClick('main', i - 1, 2, $event)"
+          @touchstart.prevent="onSlotTouchStart($event, 'main', i - 1)"
+          @touchend="onSlotTouchEnd($event)"
+          @touchcancel="onSlotTouchCancel()"
         >
           <div
             v-if="inventoryStore.mainInventory[i-1]?.item"
@@ -144,6 +153,9 @@
           :class="{ active: i - 1 === inventoryStore.selectedSlot }"
           @click.left="handleSlotClick('hotbar', i - 1, 0, $event)"
           @click.right="handleSlotClick('hotbar', i - 1, 2, $event)"
+          @touchstart.prevent="onSlotTouchStart($event, 'hotbar', i - 1)"
+          @touchend="onSlotTouchEnd($event)"
+          @touchcancel="onSlotTouchCancel()"
         >
           <div
             v-if="inventoryStore.hotbar[i-1]?.item"
@@ -161,18 +173,43 @@
       </div>
     </div>
 
-    <!-- Cursor item (follows mouse) -->
-    <div
-      v-if="cursorItem"
-      class="cursor-item"
-      :style="[
-        getInventoryIconStyle(cursorItem.item),
-        { left: cursorX + 'px', top: cursorY + 'px' },
-      ]"
-    >
-      <span v-if="!isBlockItem(cursorItem.item)">{{ getSlotShortName(cursorItem.item) }}</span>
-      <span v-if="cursorItem.count > 1" class="count">{{ cursorItem.count }}</span>
+    <!-- Anvil naming UI -->
+    <div v-if="uiStore.showAnvil" class="anvil-overlay" @click.self="uiStore.closeAll()">
+      <div class="anvil-box">
+        <div class="anvil-title">🔨 铁砧 — 重命名物品</div>
+        <div class="anvil-slot" @click.left="handleAnvilSlotClick">
+          <div v-if="anvilItem" class="item" :style="getInventoryIconStyle(anvilItem)">{{ getSlotShortName(anvilItem) }}</div>
+          <div v-else class="anvil-placeholder">拖放物品</div>
+        </div>
+        <input
+          v-model="anvilName"
+          class="anvil-input"
+          placeholder="输入新名称..."
+          maxlength="35"
+          @keydown.enter="doAnvilRename"
+        />
+        <div class="anvil-cost" v-if="anvilItem">费用: {{ anvilCost }} 级经验</div>
+        <div class="anvil-buttons">
+          <button class="anvil-btn" :disabled="!anvilItem || !anvilName" @click="doAnvilRename">✅ 命名</button>
+          <button class="anvil-btn cancel" @click="uiStore.closeAll()">✖ 关闭</button>
+        </div>
+      </div>
     </div>
+
+    <!-- Cursor item — Teleport to body to always render on top -->
+    <Teleport to="body">
+      <div
+        v-if="cursorItem"
+        class="cursor-item"
+        :style="[
+          getInventoryIconStyle(cursorItem.item),
+          { left: cursorX + 'px', top: cursorY + 'px' },
+        ]"
+      >
+        <span v-if="!isBlockItem(cursorItem.item)">{{ getSlotShortName(cursorItem.item) }}</span>
+        <span v-if="cursorItem.count > 1" class="count">{{ cursorItem.count }}</span>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -180,19 +217,104 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { usePlayerStore } from '@/ui/stores/playerStore'
+import { useUIStore } from '@/ui/stores/uiStore'
 import { CraftingSystem } from '@/gameplay/CraftingSystem'
 import { ITEM_REGISTRY } from '@/types/items'
 import { BLOCK_REGISTRY, BlockType, getBlockTypeForItem } from '@/types/blocks'
 import { getItemIconStyle } from '@/ui/itemIcon'
 import { useContainerStore } from '@/ui/stores/containerStore'
+import { playerStats, spendLevels } from '@/gameplay/PlayerStats'
+
+// ── Touch device detection ──
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+
+// ── Long-press timer for right-click simulation on mobile ──
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressSlotType = ''
+let longPressSlotIndex = 0
+let longPressEvent: MouseEvent | null = null
+
+function onSlotTouchStart(e: TouchEvent, type: string, index: number) {
+  if (!isTouchDevice) return
+  e.preventDefault()
+  longPressSlotType = type
+  longPressSlotIndex = index
+  longPressEvent = e as unknown as MouseEvent
+  longPressTimer = setTimeout(() => {
+    // Long press → right-click
+    handleSlotClick(longPressSlotType as any, longPressSlotIndex, 2, longPressEvent!)
+    longPressTimer = null
+    // Vibrate briefly if supported
+    if (navigator.vibrate) navigator.vibrate(20)
+  }, 500)
+}
+
+function onSlotTouchEnd(e: TouchEvent) {
+  if (!isTouchDevice || !longPressTimer) return
+  // Short tap → left-click
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  handleSlotClick(longPressSlotType as any, longPressSlotIndex, 0, longPressEvent!)
+}
+
+function onSlotTouchCancel() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function onArmorTouchStart(e: TouchEvent, index: number) {
+  if (!isTouchDevice) return
+  e.preventDefault()
+  longPressSlotType = 'armor'
+  longPressSlotIndex = index
+  longPressEvent = e as unknown as MouseEvent
+  longPressTimer = setTimeout(() => {
+    handleArmorClick(longPressSlotIndex, 2, longPressEvent!)
+    longPressTimer = null
+    if (navigator.vibrate) navigator.vibrate(20)
+  }, 500)
+}
+
+function onArmorTouchEnd(_e: TouchEvent) {
+  if (!isTouchDevice || !longPressTimer) return
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  handleArmorClick(longPressSlotIndex, 0, longPressEvent!)
+}
+
+function onCraftResultTouchStart(e: TouchEvent) {
+  if (!isTouchDevice) return
+  e.preventDefault()
+  longPressTimer = setTimeout(() => {
+    // Long press craft result → craft all possible (same as normal click)
+    handleCraftResultClick()
+    longPressTimer = null
+  }, 300)
+}
+
+function onCraftResultTouchEnd(_e: TouchEvent) {
+  if (!isTouchDevice || !longPressTimer) return
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  handleCraftResultClick()
+}
 
 const inventoryStore = useInventoryStore()
 const playerStore = usePlayerStore()
+const uiStore = useUIStore()
 const containerStore = useContainerStore()
 const craftingSystem = new CraftingSystem()
 
+const craftSize = computed(() => uiStore.showCrafting ? 3 : 2)
+const craftingTitle = computed(() => {
+  if (playerStore.gameMode === 'creative') return '创造物品栏'
+  return uiStore.showCrafting ? '工作台' : '背包'
+})
+
 type CreativeCategory = 'blocks' | 'redstone' | 'tools' | 'combat' | 'armor' | 'items' | 'command'
-interface CreativeEntry { item: string; name: string; blockType?: BlockType; stackSize: number; category: CreativeCategory }
+interface CreativeEntry { item: string; name: string; blockType?: BlockType; stackSize: number; category: CreativeCategory; enchantments?: Record<string, number> }
 
 const creativeCategory = ref<CreativeCategory>('blocks')
 const creativeCategories: Array<{ id: CreativeCategory; name: string }> = [
@@ -201,7 +323,7 @@ const creativeCategories: Array<{ id: CreativeCategory; name: string }> = [
   { id: 'armor', name: '盔甲' }, { id: 'items', name: '物品' },
   { id: 'command', name: '⚡ 指令' },
 ]
-const redstoneItems = new Set(['redstone', 'redstone_block', 'redstone_dust', 'piston', 'sticky_piston', 'repeater', 'comparator', 'observer', 'hopper'])
+const redstoneItems = new Set(['redstone', 'redstone_block', 'redstone_dust', 'piston', 'sticky_piston', 'repeater', 'comparator', 'observer', 'hopper', 'lever'])
 const commandItems = new Set([
   'command_block', 'chain_command_block', 'repeat_command_block',
   'barrier', 'structure_block', 'jigsaw_block', 'light_block', 'structure_void',
@@ -229,6 +351,36 @@ const allCreativeItems = computed<CreativeEntry[]>(() => {
     else if (definition.type === 'armor') category = 'armor'
     entries.push({ item: definition.id, name: definition.name, stackSize: definition.stackSize, category })
   }
+
+  // 附魔书变体
+  const enchantedBooks: Array<{ name: string; enchants: Record<string, number> }> = [
+    { name: '附魔书 (保护 IV)', enchants: { protection: 4 } },
+    { name: '附魔书 (火焰保护 IV)', enchants: { fire_protection: 4 } },
+    { name: '附魔书 (爆炸保护 IV)', enchants: { blast_protection: 4 } },
+    { name: '附魔书 (弹射物保护 IV)', enchants: { projectile_protection: 4 } },
+    { name: '附魔书 (锋利 V)', enchants: { sharpness: 5 } },
+    { name: '附魔书 (亡灵杀手 V)', enchants: { smite: 5 } },
+    { name: '附魔书 (节肢杀手 V)', enchants: { bane_of_arthropods: 5 } },
+    { name: '附魔书 (效率 V)', enchants: { efficiency: 5 } },
+    { name: '附魔书 (时运 III)', enchants: { fortune: 3 } },
+    { name: '附魔书 (精准采集)', enchants: { silk_touch: 1 } },
+    { name: '附魔书 (耐久 III)', enchants: { unbreaking: 3 } },
+    { name: '附魔书 (经验修补)', enchants: { mending: 1 } },
+    { name: '附魔书 (力量 V)', enchants: { power: 5 } },
+    { name: '附魔书 (冲击 II)', enchants: { punch: 2 } },
+    { name: '附魔书 (火焰)', enchants: { flame: 1 } },
+    { name: '附魔书 (无限)', enchants: { infinity: 1 } },
+    { name: '附魔书 (海之眷顾 III)', enchants: { luck_of_the_sea: 3 } },
+    { name: '附魔书 (饵钓 III)', enchants: { lure: 3 } },
+    { name: '附魔书 (忠诚 III)', enchants: { loyalty: 3 } },
+    { name: '附魔书 (激流 III)', enchants: { riptide: 3 } },
+    { name: '附魔书 (引雷)', enchants: { channeling: 1 } },
+    { name: '附魔书 (穿刺 V)', enchants: { impaling: 5 } },
+  ]
+  for (const book of enchantedBooks) {
+    entries.push({ item: 'enchanted_book', name: book.name, stackSize: 1, category: 'items', enchantments: book.enchants })
+  }
+
   return entries
 })
 function switchCreativeCategory(id: CreativeCategory) {
@@ -258,15 +410,22 @@ function selectCreativeItem(entry: CreativeEntry): void {
   inventoryStore.hotbar[inventoryStore.selectedSlot] = {
     item: entry.item, count: entry.stackSize,
     ...(entry.blockType === undefined ? {} : { blockType: entry.blockType }),
+    ...(entry.enchantments ? { enchantments: { ...entry.enchantments } } : {}),
   }
 }
 
-// Craft grid: 3x3
+// Craft grid: 动态大小 (2×2 或 3×3)
 const craftGrid = ref<(string | null)[][]>([
   [null, null, null],
   [null, null, null],
   [null, null, null],
 ])
+
+// 监听 craftSize 变化，重置合成格
+watch(craftSize, () => {
+  craftGrid.value = Array.from({ length: craftSize.value }, () => Array(craftSize.value).fill(null))
+  craftResult.value = null
+})
 
 const craftResult = ref<{ item: string; count: number } | null>(null)
 
@@ -274,6 +433,44 @@ const craftResult = ref<{ item: string; count: number } | null>(null)
 const cursorItem = ref<{ item: string; count: number } | null>(null)
 const cursorX = ref(0)
 const cursorY = ref(0)
+
+// Anvil state
+const anvilItem = ref<string | null>(null)
+const anvilName = ref('')
+const anvilCost = computed(() => anvilItem.value ? 1 : 0)
+
+function handleAnvilSlotClick() {
+  if (!cursorItem.value && anvilItem.value) {
+    cursorItem.value = { item: anvilItem.value, count: 1 }
+    anvilItem.value = null
+  } else if (cursorItem.value && !anvilItem.value) {
+    anvilItem.value = cursorItem.value.item
+    anvilName.value = ''
+    cursorItem.value.count--
+    if (cursorItem.value.count <= 0) cursorItem.value = null
+  } else if (cursorItem.value && anvilItem.value) {
+    const old = anvilItem.value
+    anvilItem.value = cursorItem.value.item
+    anvilName.value = ''
+    cursorItem.value = { item: old, count: 1 }
+  }
+}
+
+function doAnvilRename() {
+  if (!anvilItem.value || !anvilName.value.trim()) return
+  if (playerStats.experienceLevel < anvilCost.value) return
+  spendLevels(anvilCost.value)
+  const inv = useInventoryStore()
+  for (const slot of [...inv.hotbar, ...inv.mainInventory]) {
+    if (slot.item === anvilItem.value) {
+      slot.item = anvilName.value.trim()
+      break
+    }
+  }
+  anvilItem.value = null
+  anvilName.value = ''
+  uiStore.closeAll()
+}
 
 // Track mouse position for cursor item
 const onMouseMove = (e: MouseEvent) => {
@@ -307,8 +504,8 @@ function handleSlotClick(
   let craftCell: { row: number; col: number } | null = null
 
   if (type === 'craft') {
-    const row = Math.floor(index / 3)
-    const col = index % 3
+    const row = Math.floor(index / craftSize.value)
+    const col = index % craftSize.value
     craftCell = { row, col }
     targetItem = craftGrid.value[row][col]
     targetCount = targetItem ? 1 : 0
@@ -460,8 +657,8 @@ function handleCraftResultClick() {
   }
 
   // Consume ingredients
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
+  for (let r = 0; r < craftSize.value; r++) {
+    for (let c = 0; c < craftSize.value; c++) {
       if (craftGrid.value[r][c]) {
         craftGrid.value[r][c] = null
       }
@@ -518,6 +715,24 @@ function handleArmorClick(index: number, button: number, e: MouseEvent) {
   e.stopPropagation()
   const slot = inventoryStore.armor[index]
 
+  // 右键：快速交换（不验证类型）
+  if (button === 2) {
+    if (!cursorItem.value && slot.item) {
+      cursorItem.value = { item: slot.item, count: 1 }
+      slot.item = null
+    } else if (cursorItem.value && !slot.item) {
+      slot.item = cursorItem.value.item
+      cursorItem.value.count--
+      if (cursorItem.value.count <= 0) cursorItem.value = null
+    } else if (cursorItem.value && slot.item) {
+      const oldItem = slot.item
+      slot.item = cursorItem.value.item
+      cursorItem.value = { item: oldItem, count: 1 }
+    }
+    return
+  }
+
+  // 左键
   if (!cursorItem.value && slot.item) {
     // Pick up armor from slot
     cursorItem.value = { item: slot.item, count: 1 }
@@ -525,10 +740,10 @@ function handleArmorClick(index: number, button: number, e: MouseEvent) {
   } else if (cursorItem.value && !slot.item) {
     // Try to equip armor
     const armorTypes: Record<string, string[]> = {
-      helmet: ['leather_helmet', 'chainmail_helmet', 'iron_helmet', 'golden_helmet', 'diamond_helmet', 'netherite_helmet'],
-      chestplate: ['leather_chestplate', 'chainmail_chestplate', 'iron_chestplate', 'golden_chestplate', 'diamond_chestplate', 'netherite_chestplate'],
-      leggings: ['leather_leggings', 'chainmail_leggings', 'iron_leggings', 'golden_leggings', 'diamond_leggings', 'netherite_leggings'],
-      boots: ['leather_boots', 'chainmail_boots', 'iron_boots', 'golden_boots', 'diamond_boots', 'netherite_boots'],
+      helmet: ['leather_helmet', 'chainmail_helmet', 'iron_helmet', 'golden_helmet', 'diamond_helmet', 'netherite_helmet', 'steel_helmet', 'copper_helmet'],
+      chestplate: ['leather_chestplate', 'chainmail_chestplate', 'iron_chestplate', 'golden_chestplate', 'diamond_chestplate', 'netherite_chestplate', 'steel_chestplate', 'copper_chestplate'],
+      leggings: ['leather_leggings', 'chainmail_leggings', 'iron_leggings', 'golden_leggings', 'diamond_leggings', 'netherite_leggings', 'steel_leggings', 'copper_leggings'],
+      boots: ['leather_boots', 'chainmail_boots', 'iron_boots', 'golden_boots', 'diamond_boots', 'netherite_boots', 'steel_boots', 'copper_boots'],
     }
 
     const validItems = armorTypes[slot.slotType]
@@ -538,10 +753,19 @@ function handleArmorClick(index: number, button: number, e: MouseEvent) {
       if (cursorItem.value.count <= 0) cursorItem.value = null
     }
   } else if (cursorItem.value && slot.item) {
-    // Swap armor
-    const oldItem = slot.item
-    slot.item = cursorItem.value.item
-    cursorItem.value = { item: oldItem, count: 1 }
+    // Swap armor (only if the new item is valid for this slot type)
+    const armorTypes: Record<string, string[]> = {
+      helmet: ['leather_helmet', 'chainmail_helmet', 'iron_helmet', 'golden_helmet', 'diamond_helmet', 'netherite_helmet', 'steel_helmet', 'copper_helmet'],
+      chestplate: ['leather_chestplate', 'chainmail_chestplate', 'iron_chestplate', 'golden_chestplate', 'diamond_chestplate', 'netherite_chestplate', 'steel_chestplate', 'copper_chestplate'],
+      leggings: ['leather_leggings', 'chainmail_leggings', 'iron_leggings', 'golden_leggings', 'diamond_leggings', 'netherite_leggings', 'steel_leggings', 'copper_leggings'],
+      boots: ['leather_boots', 'chainmail_boots', 'iron_boots', 'golden_boots', 'diamond_boots', 'netherite_boots', 'steel_boots', 'copper_boots'],
+    }
+    const validItems = armorTypes[slot.slotType]
+    if (validItems && validItems.includes(cursorItem.value.item)) {
+      const oldItem = slot.item
+      slot.item = cursorItem.value.item
+      cursorItem.value = { item: oldItem, count: 1 }
+    }
   }
 }
 
@@ -633,7 +857,6 @@ function getSlotShortName(itemId: string | null): string {
 }
 
 function close() {
-  // Return cursor item to inventory on close
   if (cursorItem.value) {
     if (!addToHotbar(cursorItem.value.item, cursorItem.value.count)) {
       addToMainInventory(cursorItem.value.item, cursorItem.value.count)
@@ -641,18 +864,23 @@ function close() {
     cursorItem.value = null
   }
   inventoryStore.showInventory = false
+  uiStore.closeAll()
 }
 
 // E key to toggle
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.code === 'KeyE') {
     if (containerStore.active) return
+    const willClose = inventoryStore.showInventory
     inventoryStore.showInventory = !inventoryStore.showInventory
-    if (!inventoryStore.showInventory && cursorItem.value) {
-      if (!addToHotbar(cursorItem.value.item, cursorItem.value.count)) {
-        addToMainInventory(cursorItem.value.item, cursorItem.value.count)
+    if (willClose) {
+      if (cursorItem.value) {
+        if (!addToHotbar(cursorItem.value.item, cursorItem.value.count)) {
+          addToMainInventory(cursorItem.value.item, cursorItem.value.count)
+        }
+        cursorItem.value = null
       }
-      cursorItem.value = null
+      uiStore.closeAll()
     }
   }
   // Press Q to drop cursor item
@@ -698,6 +926,8 @@ onUnmounted(() => {
   position: relative;
   z-index: 101;
   pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
 }
 
 .inventory-container h2 {
@@ -716,8 +946,13 @@ onUnmounted(() => {
 
 .craft-grid {
   display: grid;
-  grid-template-columns: repeat(3, 40px);
   gap: 2px;
+}
+.craft-grid.craft-2x2 {
+  grid-template-columns: repeat(2, 40px);
+}
+.craft-grid.craft-3x3 {
+  grid-template-columns: repeat(3, 40px);
 }
 
 .craft-arrow {
@@ -976,7 +1211,7 @@ onUnmounted(() => {
   font-weight: bold;
 }
 
-/* Cursor item that follows the mouse */
+/* Cursor item — teleported to body, always on top */
 .cursor-item {
   position: fixed;
   width: 32px;
@@ -989,8 +1224,32 @@ onUnmounted(() => {
   color: white;
   text-shadow: 1px 1px 0 #000;
   pointer-events: none;
-  z-index: 9999;
-  transform: translate(-50%, -50%);
+  z-index: 99999;
+  margin-left: -16px;
+  margin-top: -16px;
   border: 2px solid rgba(255, 255, 255, 0.5);
 }
+
+/* Anvil UI */
+.anvil-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+}
+.anvil-box {
+  background: #c6c6c6; border: 3px solid #555; padding: 20px; border-radius: 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 280px;
+}
+.anvil-title { font-size: 18px; font-weight: bold; }
+.anvil-slot { width: 50px; height: 50px; background: #8b8b8b; border: 2px solid; border-color: #555 #fff #fff #555; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.anvil-placeholder { font-size: 10px; color: #666; }
+.anvil-input { width: 200px; padding: 6px 10px; font-family: monospace; font-size: 14px; border: 2px solid #555; outline: none; }
+.anvil-input:focus { border-color: #7ab05c; }
+.anvil-cost { font-size: 12px; color: #2a8a2a; }
+.anvil-buttons { display: flex; gap: 10px; }
+.anvil-btn { padding: 8px 20px; font-family: monospace; font-size: 14px; border: 2px solid #555; background: #999; cursor: pointer; }
+.anvil-btn:hover { background: #b0b0b0; }
+.anvil-btn:disabled { opacity: 0.4; cursor: default; }
+.anvil-btn.cancel { background: #c66; }
+.anvil-btn.cancel:hover { background: #d88; }
 </style>

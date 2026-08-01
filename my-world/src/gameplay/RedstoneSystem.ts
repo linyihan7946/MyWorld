@@ -365,6 +365,7 @@ export class RedstoneSystem {
   private signalAt(position: Direction): number {
     const type = this.chunks.getBlock(position.x, position.y, position.z) as BlockType
     if (type === BlockType.REDSTONE_BLOCK) return 15
+    if (type === BlockType.LEVER_ON) return 15
     if (type === BlockType.REDSTONE_DUST) return this.dustPower.get(this.key(position)) ?? 0
     return this.states.get(this.key(position))?.outputPower ?? 0
   }
@@ -372,6 +373,7 @@ export class RedstoneSystem {
   private signalDeliveredFrom(source: Direction, target: Direction): number {
     const type = this.chunks.getBlock(source.x, source.y, source.z) as BlockType
     if (type === BlockType.REDSTONE_BLOCK) return 15
+    if (type === BlockType.LEVER_ON) return 15
     if (type === BlockType.REDSTONE_DUST) return this.dustPower.get(this.key(source)) ?? 0
     const state = this.states.get(this.key(source))
     if (!state || state.outputPower <= 0) return 0

@@ -4,6 +4,8 @@ import { WorldGenerator } from './WorldGenerator'
 import { ChunkMesher } from '@/rendering/ChunkMesher'
 import { CHUNK_HEIGHT, CHUNK_SIZE, RENDER_DISTANCE } from '@/utils/constants'
 import { BlockType } from '@/types/blocks'
+import type { Dimension } from '@/gameplay/PortalSystem'
+import { DIMENSIONS } from './dimensions/Dimension'
 
 interface ChunkMeshes {
   opaque: THREE.Mesh | null
@@ -17,9 +19,12 @@ export class ChunkManager {
   private mesher: ChunkMesher
   private generator: WorldGenerator
 
+  /** 当前维度 */
+  public currentDimension: Dimension = 'overworld'
+
   private loadQueue: string[] = []
   private queuedLoads = new Set<string>()
-  private maxLoadsPerFrame = 4  // 提高每帧加载量，减少掉入虚空的概率
+  private maxLoadsPerFrame = 32  // 每帧最多加载 32 个新区块
   private lightSources = new Map<string, { position: THREE.Vector3; color: THREE.Color; chunkKey: string }>()
 
   // Flowing water stores a level from 1..7. Generated water and water placed by
@@ -71,12 +76,12 @@ export class ChunkManager {
     }
 
     let loaded = 0
-    const maxLoad = this.chunks.size === 0 ? 25 : this.maxLoadsPerFrame
+    const maxLoad = this.chunks.size === 0 ? 128 : this.maxLoadsPerFrame
     while (this.loadQueue.length > 0 && loaded < maxLoad) {
       const key = this.loadQueue.shift()!
       this.queuedLoads.delete(key)
       if (!this.chunks.has(key)) {
-        const [cx, cz] = this.parseChunkKey(key)
+        const [_dim, cx, cz] = this.parseChunkKey(key)
         this.loadChunk(cx, cz)
         loaded++
       }
@@ -96,7 +101,7 @@ export class ChunkManager {
   }
 
   private unloadChunk(key: string): void {
-    const [cx, cz] = this.parseChunkKey(key)
+    const [_dim, cx, cz] = this.parseChunkKey(key)
     const meshes = this.meshData.get(key)
     if (meshes) {
       if (meshes.opaque) {
@@ -117,7 +122,7 @@ export class ChunkManager {
     this.markHorizontalNeighborsDirty(cx, cz)
   }
 
-  private rebuildDirtyMeshes(maxRebuilds = 3): void {
+  private rebuildDirtyMeshes(maxRebuilds = 16): void {
     let rebuilt = 0
 
     for (const [key, chunk] of this.chunks) {
@@ -147,7 +152,7 @@ export class ChunkManager {
    * 仅重建脏网格，不重新计算区块加载（用于玩家未跨区块时的每帧刷新）
    */
   public rebuildDirtyOnly(): void {
-    this.rebuildDirtyMeshes(3)
+    this.rebuildDirtyMeshes(16)
   }
 
   /**
@@ -183,7 +188,7 @@ export class ChunkManager {
     }
 
     // 流体一次可能改变多个方块；完成本批次后统一刷新网格（限制数量防止卡顿）
-    this.rebuildDirtyMeshes(6)
+    this.rebuildDirtyMeshes(16)
   }
 
   private getNeighbors(chunk: Chunk): { px?: Chunk; nx?: Chunk; pz?: Chunk; nz?: Chunk } {
@@ -428,8 +433,9 @@ export class ChunkManager {
       type === BlockType.GLOWSTONE || type === BlockType.SEA_LANTERN
   }
 
-  getHeightAt(worldX: number, worldZ: number): number {
-    for (let y = CHUNK_HEIGHT - 1; y >= 0; y--) {
+  getHeightAt(worldX: number, worldZ: number, maxSearchY?: number): number {
+    const startY = maxSearchY ?? (CHUNK_HEIGHT - 1)
+    for (let y = startY; y >= 0; y--) {
       const block = this.getBlock(worldX, y, worldZ)
       if (block !== BlockType.AIR && block !== BlockType.WATER) return y + 1
     }
@@ -479,11 +485,60 @@ export class ChunkManager {
     return null
   }
 
-  private chunkKey(cx: number, cz: number): string { return `${cx},${cz}` }
+  private chunkKey(cx: number, cz: number): string { return `${this.currentDimension}:${cx},${cz}` }
   private blockKey(x: number, y: number, z: number): string { return `${x},${y},${z}` }
-  private parseChunkKey(key: string): [number, number] {
-    const [cx, cz] = key.split(',').map(Number)
-    return [cx, cz]
+  private parseChunkKey(key: string): [string, number, number] {
+    // 格式: "dimension:cx,cz"
+    const colonIdx = key.indexOf(':')
+    const dim = key.slice(0, colonIdx)
+    const [cx, cz] = key.slice(colonIdx + 1).split(',').map(Number)
+    return [dim, cx, cz]
+  }
+
+  /**
+   * 卸载当前维度的所有区块（保留区块数据不销毁，仅从场景移除网格）
+   */
+  private unloadAllChunks(): void {
+    for (const [key] of this.chunks) {
+      const meshes = this.meshData.get(key)
+      if (meshes) {
+        if (meshes.opaque) {
+          this.scene.remove(meshes.opaque)
+          this.mesher.disposeMesh(meshes.opaque)
+        }
+        if (meshes.transparent) {
+          this.scene.remove(meshes.transparent)
+          this.mesher.disposeMesh(meshes.transparent)
+        }
+        this.meshData.delete(key)
+      }
+    }
+    // 清除光源（它们会在新维度的区块加载时重新扫描）
+    this.lightSources.clear()
+    // 清除流体队列（维度间流体不应跨维度流动）
+    this.fluidLevels.clear()
+    this.fluidQueue = []
+    this.queuedFluids.clear()
+    this.loadQueue = []
+    this.queuedLoads.clear()
+  }
+
+  /**
+   * 切换到目标维度：卸载当前区块，切换维度，然后加载新维度的区块
+   */
+  async switchDimension(targetDimension: Dimension, spawnX: number, spawnZ: number): Promise<void> {
+    // 卸载旧维度的网格（保留区块数据在内存中以便返回时恢复）
+    this.unloadAllChunks()
+    // 切换维度（chunkKey 会自动使用新维度前缀）
+    this.currentDimension = targetDimension
+    // 更新 WorldGenerator 的维度
+    this.generator.setDimension(targetDimension)
+    // 加载新维度的区块
+    const cx = Math.floor(spawnX / CHUNK_SIZE)
+    const cz = Math.floor(spawnZ / CHUNK_SIZE)
+    await this.updateChunks(cx, cz)
+    // ★ 强制重建所有已加载区块的网格（updateChunks 默认只重建3个）
+    this.rebuildDirtyMeshes(999)
   }
 
   dispose(): void {

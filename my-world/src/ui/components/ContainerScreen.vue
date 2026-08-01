@@ -19,6 +19,9 @@
           class="slot"
           @click.left="handleSlot('container', index, 0, $event)"
           @click.right="handleSlot('container', index, 2, $event)"
+          @touchstart.prevent="onSlotTouchStart($event, 'container', index)"
+          @touchend="onSlotTouchEnd($event)"
+          @touchcancel="onSlotTouchCancel()"
         >
           <span v-if="slot.item" class="item" :style="iconStyle(slot.item, slot.blockType)">
             <span v-if="slot.blockType === undefined" class="item-label">{{ shortName(slot.item) }}</span>
@@ -35,6 +38,9 @@
           class="slot"
           @click.left="handleSlot('main', index, 0, $event)"
           @click.right="handleSlot('main', index, 2, $event)"
+          @touchstart.prevent="onSlotTouchStart($event, 'main', index)"
+          @touchend="onSlotTouchEnd($event)"
+          @touchcancel="onSlotTouchCancel()"
         >
           <span v-if="slot.item" class="item" :style="iconStyle(slot.item, slot.blockType)">
             <span v-if="slot.blockType === undefined" class="item-label">{{ shortName(slot.item) }}</span>
@@ -51,6 +57,9 @@
           :class="{ selected: index === inventoryStore.selectedSlot }"
           @click.left="handleSlot('hotbar', index, 0, $event)"
           @click.right="handleSlot('hotbar', index, 2, $event)"
+          @touchstart.prevent="onSlotTouchStart($event, 'hotbar', index)"
+          @touchend="onSlotTouchEnd($event)"
+          @touchcancel="onSlotTouchCancel()"
         >
           <span v-if="slot.item" class="item" :style="iconStyle(slot.item, slot.blockType)">
             <span v-if="slot.blockType === undefined" class="item-label">{{ shortName(slot.item) }}</span>
@@ -94,6 +103,41 @@ const cursorY = ref(0)
 const iconStyle = (item: string, blockType?: BlockType) => getItemIconStyle(item, blockType)
 const shortName = (item: string) => ITEM_REGISTRY[item]?.name.substring(0, 4) ?? item.substring(0, 4)
 const maxStack = (item: string) => ITEM_REGISTRY[item]?.stackSize ?? 64
+
+// ── Touch device detection & long-press for right-click ──
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressInfo: { section: SlotSection; index: number; event: MouseEvent } | null = null
+
+function onSlotTouchStart(e: TouchEvent, section: SlotSection, index: number) {
+  if (!isTouchDevice) return
+  e.preventDefault()
+  longPressInfo = { section, index, event: e as unknown as MouseEvent }
+  longPressTimer = setTimeout(() => {
+    if (longPressInfo) {
+      handleSlot(longPressInfo.section, longPressInfo.index, 2, longPressInfo.event)
+      longPressInfo = null
+      longPressTimer = null
+      if (navigator.vibrate) navigator.vibrate(20)
+    }
+  }, 500)
+}
+
+function onSlotTouchEnd(_e: TouchEvent) {
+  if (!isTouchDevice || !longPressTimer || !longPressInfo) return
+  clearTimeout(longPressTimer)
+  longPressTimer = null
+  handleSlot(longPressInfo.section, longPressInfo.index, 0, longPressInfo.event)
+  longPressInfo = null
+}
+
+function onSlotTouchCancel() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+    longPressInfo = null
+  }
+}
 
 function getSlots(section: SlotSection): InventorySlot[] {
   if (section === 'container') return containerStore.activeSlots
@@ -235,6 +279,8 @@ onUnmounted(() => {
   border: 3px solid;
   border-color: #f2f2f2 #555 #555 #f2f2f2;
   font-family: 'Courier New', monospace;
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
 }
 .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 h2 { color: #333; font-size: 17px; }

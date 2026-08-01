@@ -30,9 +30,9 @@ const CREATIVE_BLOCKS: { item: string; blockType: BlockType }[] = [
   { item: 'cobblestone', blockType: BlockType.COBBLESTONE },
   { item: 'oak_planks', blockType: BlockType.OAK_PLANKS },
   { item: 'oak_log', blockType: BlockType.OAK_LOG },
-  { item: 'sand', blockType: BlockType.SAND },
-  { item: 'glass', blockType: BlockType.GLASS },
-  { item: 'stone_bricks', blockType: BlockType.STONE_BRICKS },
+  { item: 'redstone_dust', blockType: BlockType.REDSTONE_DUST },
+  { item: 'repeater', blockType: BlockType.REPEATER },
+  { item: 'lever', blockType: BlockType.LEVER },
 ]
 
 // === 指令专属方块 (需要创造模式+作弊) ===
@@ -150,6 +150,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       diamond_helmet: 3, diamond_chestplate: 8, diamond_leggings: 6, diamond_boots: 3,
       netherite_helmet: 3, netherite_chestplate: 8, netherite_leggings: 6, netherite_boots: 3,
       steel_helmet: 4, steel_chestplate: 9, steel_leggings: 7, steel_boots: 4,
+      copper_helmet: 1, copper_chestplate: 4, copper_leggings: 3, copper_boots: 1,
     }
     let total = 0
     for (const slot of armor.value) {
@@ -177,6 +178,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       leather_boots: 'boots', chainmail_boots: 'boots', iron_boots: 'boots',
       golden_boots: 'boots', diamond_boots: 'boots', netherite_boots: 'boots',
       steel_helmet: 'helmet', steel_chestplate: 'chestplate', steel_leggings: 'leggings', steel_boots: 'boots',
+      copper_helmet: 'helmet', copper_chestplate: 'chestplate', copper_leggings: 'leggings', copper_boots: 'boots',
     }
 
     const slotType = armorTypeMap[itemId]

@@ -3,7 +3,8 @@ import { Chunk } from './Chunk'
 import { CHUNK_SIZE, CHUNK_HEIGHT } from '@/utils/constants'
 import { BlockType } from '@/types/blocks'
 import { BIOMES, type BiomeId, type BiomeDef } from './BiomeRegistry'
-import { Village, PillagerOutpost, Shipwreck, AncientCity, Stronghold } from './structures/Structures'
+import { Village, PillagerOutpost, Shipwreck, AncientCity, Stronghold, NetherFortress, BastionRemnant, SoulSandValley, WarpedForest, EndShip } from './structures/Structures'
+import type { Dimension } from '@/gameplay/PortalSystem'
 
 /**
  * WorldGenerator — Minecraft-style multi-biome world generation.
@@ -20,6 +21,9 @@ export class WorldGenerator {
   private lushNoise: ReturnType<typeof createNoise3D>
   private riverNoise: ReturnType<typeof createNoise2D>
   private superflat: boolean
+
+  /** 当前维度（用于地形生成） */
+  private currentDimension: Dimension = 'overworld'
 
   constructor(seed: number, superflat = false) {
     this.superflat = superflat
@@ -43,17 +47,32 @@ export class WorldGenerator {
     }
   }
 
+  /** 设置当前维度 */
+  setDimension(dimension: Dimension): void {
+    this.currentDimension = dimension
+  }
+
   /**
    * 生成区块地形
    */
   generateChunk(chunk: Chunk): void {
-    const worldX = chunk.chunkX * CHUNK_SIZE
-    const worldZ = chunk.chunkZ * CHUNK_SIZE
-
     if (this.superflat) {
       this.generateFlatChunk(chunk)
+      chunk.rebuildHeightmap()
       return
     }
+
+    switch (this.currentDimension) {
+      case 'nether': this.generateNetherChunk(chunk); return
+      case 'end': this.generateEndChunk(chunk); return
+      default: this.generateOverworldChunk(chunk)
+    }
+  }
+
+  /** 主世界地形生成 */
+  private generateOverworldChunk(chunk: Chunk): void {
+    const worldX = chunk.chunkX * CHUNK_SIZE
+    const worldZ = chunk.chunkZ * CHUNK_SIZE
 
     const treeOk = (x: number, z: number) =>
       x > 2 && x < CHUNK_SIZE - 2 && z > 2 && z < CHUNK_SIZE - 2
@@ -68,8 +87,10 @@ export class WorldGenerator {
         const biome = this.getBiome(wx, wz)
         const biomeDef = BIOMES[biome]
         const waterLevel = 62
+        // 提前退出：只遍历到最高方块的略上方（树木+10）
+        const maxY = Math.min(CHUNK_HEIGHT - 1, Math.max(height, waterLevel) + 15)
 
-        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let y = 0; y <= maxY; y++) {
           let blockType = BlockType.AIR
 
           if (y === 0) {
@@ -120,6 +141,181 @@ export class WorldGenerator {
 
     // Structure placement (based on chunk coordinates)
     this.tryPlaceStructures(chunk)
+
+    // 重建高度图（供网格生成器跳过空气层）
+    chunk.rebuildHeightmap()
+  }
+
+  /** 下界地形生成 */
+  private generateNetherChunk(chunk: Chunk): void {
+    const worldX = chunk.chunkX * CHUNK_SIZE
+    const worldZ = chunk.chunkZ * CHUNK_SIZE
+
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const wx = worldX + x
+        const wz = worldZ + z
+
+        // 下界地形：顶部 bedrock 天花板 + 中间空洞 + 底部 bedrock
+        const terrainHeight = 32 + Math.floor(this.noise2D(wx * 0.02, wz * 0.02) * 12)
+        const ceilingLow = 96 + Math.floor(this.noise2D2(wx * 0.015, wz * 0.015) * 12)
+
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          let blockType = BlockType.AIR
+
+          if (y === 0) {
+            blockType = BlockType.BEDROCK
+          } else if (y < 5) {
+            // 底部 bedrock + 一些 netherrack
+            blockType = Math.random() < 0.6 ? BlockType.BEDROCK : BlockType.NETHERRACK
+          } else if (y >= 122) {
+            blockType = BlockType.BEDROCK
+          } else if (y >= ceilingLow) {
+            // 天花板：netherrack 混合 bedrock
+            blockType = y >= 126 ? BlockType.BEDROCK : BlockType.NETHERRACK
+          } else if (y <= terrainHeight) {
+            blockType = BlockType.NETHERRACK
+          }
+
+          // 熔岩海（低处替换为岩浆）
+          if (blockType === BlockType.NETHERRACK && y < 32 && y > 5) {
+            const lavaNoise = this.noise3D(wx * 0.03, y * 0.05, wz * 0.03)
+            if (lavaNoise > 0.55 && y < 20) {
+              blockType = BlockType.MAGMA_BLOCK
+            }
+          }
+
+          // 灵魂沙区域
+          if (blockType === BlockType.NETHERRACK && y >= terrainHeight - 1 && y <= terrainHeight) {
+            const soulNoise = this.noise2D2(wx * 0.04, wz * 0.04)
+            if (soulNoise > 0.75) {
+              blockType = BlockType.SOUL_SAND
+            }
+          }
+
+          // 萤石簇（天花板附近）
+          if (blockType === BlockType.NETHERRACK && y > 60 && y < 110) {
+            const glowNoise = this.noise3D(wx * 0.1 + 10, y * 0.08, wz * 0.1 + 10)
+            if (glowNoise > 0.88) {
+              blockType = BlockType.GLOWSTONE
+            }
+          }
+
+          // 下界石英矿
+          if (blockType === BlockType.NETHERRACK && y > 10 && y < 114) {
+            const quartzNoise = this.noise3D(wx * 0.12 + 300, y * 0.12, wz * 0.12)
+            if (quartzNoise > 0.82) {
+              blockType = BlockType.NETHER_QUARTZ_ORE
+            }
+          }
+
+          // 黑曜石矿脉（极稀有，低层）
+          if (blockType === BlockType.NETHERRACK && y > 8 && y < 22) {
+            const debrisNoise = this.noise3D(wx * 0.15 + 600, y * 0.15, wz * 0.15)
+            if (debrisNoise > 0.94) {
+              blockType = BlockType.OBSIDIAN
+            }
+          }
+
+          chunk.setBlock(x, y, z, blockType)
+        }
+      }
+    }
+
+    // 下界结构
+    this.tryPlaceNetherStructures(chunk)
+    chunk.rebuildHeightmap()
+  }
+
+  /** 末地地形生成 */
+  private generateEndChunk(chunk: Chunk): void {
+    const worldX = chunk.chunkX * CHUNK_SIZE
+    const worldZ = chunk.chunkZ * CHUNK_SIZE
+
+    // 末地中心浮岛距离
+    const centerDist = Math.sqrt(worldX * worldX + worldZ * worldZ)
+
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const wx = worldX + x
+        const wz = worldZ + z
+        const dist = Math.sqrt(wx * wx + wz * wz)
+
+        // 主岛在中心，外围是小浮岛
+        let terrainHeight: number
+        if (dist < 80) {
+          // 主岛：中间高四周低
+          terrainHeight = 56 + Math.floor((80 - dist) * 0.15)
+        } else {
+          // 外围浮岛：噪点控制
+          const islandNoise = this.noise2D2(wx * 0.03, wz * 0.03)
+          terrainHeight = 40 + Math.floor(islandNoise * 20)
+          // 远处密度降低
+          if (dist > 200 && Math.abs(islandNoise) < 0.3) {
+            terrainHeight = 0 // 虚空
+          }
+        }
+
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          let blockType = BlockType.AIR
+
+          if (y === 0 && terrainHeight > 0) {
+            blockType = BlockType.BEDROCK
+          } else if (y < terrainHeight - 3) {
+            blockType = BlockType.END_STONE
+          } else if (y < terrainHeight) {
+            blockType = BlockType.END_STONE
+          } else if (y === terrainHeight && terrainHeight > 0) {
+            blockType = BlockType.END_STONE
+          }
+
+          chunk.setBlock(x, y, z, blockType)
+        }
+
+        // 黑曜石柱（主岛附近）
+        if (dist < 50 && dist > 10 && terrainHeight > 45) {
+          const pillarNoise = this.noise2D2(wx * 0.2, wz * 0.2)
+          if (pillarNoise > 0.88) {
+            const pillarHeight = 4 + Math.floor(Math.abs(this.noise2D(wx * 0.3, wz * 0.3)) * 8)
+            for (let py = terrainHeight + 1; py <= terrainHeight + pillarHeight && py < CHUNK_HEIGHT; py++) {
+              chunk.setBlock(x, py, z, BlockType.OBSIDIAN)
+            }
+          }
+        }
+      }
+    }
+
+    // 末地结构（末地船）
+    this.tryPlaceEndStructures(chunk)
+    chunk.rebuildHeightmap()
+  }
+
+  /** 下界结构放置 */
+  private tryPlaceNetherStructures(chunk: Chunk): void {
+    // Nether Fortress
+    if (Math.abs(chunk.chunkX % 25) === 7 && Math.abs(chunk.chunkZ % 25) === 7) {
+      new NetherFortress().placeInChunk(chunk, 0, 35, 0, true)
+    }
+    // Bastion Remnant
+    if (Math.abs(chunk.chunkX % 31) === 13 && Math.abs(chunk.chunkZ % 31) === 13) {
+      new BastionRemnant().placeInChunk(chunk, 0, 35, 0, true)
+    }
+    // Soul Sand Valley decoration
+    if (Math.abs(chunk.chunkX % 13) === 3 && Math.abs(chunk.chunkZ % 13) === 3) {
+      new SoulSandValley().placeInChunk(chunk, 0, 30, 0, true)
+    }
+    // Warped Forest decoration
+    if (Math.abs(chunk.chunkX % 17) === 5 && Math.abs(chunk.chunkZ % 17) === 5) {
+      new WarpedForest().placeInChunk(chunk, 0, 30, 0, true)
+    }
+  }
+
+  /** 末地结构放置 */
+  private tryPlaceEndStructures(chunk: Chunk): void {
+    // End Ship
+    if (Math.abs(chunk.chunkX % 23) === 11 && Math.abs(chunk.chunkZ % 23) === 11) {
+      new EndShip().placeInChunk(chunk, 4, 45, 0, true)
+    }
   }
 
   /**

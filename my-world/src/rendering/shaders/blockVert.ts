@@ -1,10 +1,11 @@
 /**
  * 方块顶点着色器
+ * 新增：vHeight 传递给片段着色器用于天空光计算
  */
 export const blockVertexShader = /* glsl */ `
 uniform float time;
 
-attribute float animFlag; // 1.0 = water, 0.0 = other
+attribute float animFlag;
 attribute float ao;
 
 varying vec2 vUv;
@@ -13,22 +14,19 @@ varying vec3 vWorldPos;
 varying float vFogDepth;
 varying float vIsWater;
 varying float vAO;
+varying float vHeight;
 
 void main() {
   vNormal = normalize(normalMatrix * normal);
   vIsWater = animFlag;
   vAO = ao;
 
-  // Animate water UVs for flow effect
   vec2 animUv = uv;
   if (animFlag > 0.5) {
-    // Top face: circular ripple
     if (abs(vNormal.y) > 0.5) {
       animUv.x += sin(time * 1.5 + position.x * 2.0) * 0.02;
       animUv.y += cos(time * 1.5 + position.z * 2.0) * 0.02;
-    }
-    // Side faces: downward flow
-    else {
+    } else {
       animUv.y += time * 0.15;
     }
   }
@@ -36,6 +34,7 @@ void main() {
 
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldPos = worldPos.xyz;
+  vHeight = worldPos.y;  // 传递绝对Y坐标
 
   vec4 mvPosition = viewMatrix * worldPos;
   vFogDepth = -mvPosition.z;

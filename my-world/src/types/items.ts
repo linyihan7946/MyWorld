@@ -10,7 +10,7 @@ export interface ItemDefinition {
   damage?: number
   durability?: number
   toolType?: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'sword'
-  toolLevel?: 'wood' | 'stone' | 'iron' | 'gold' | 'diamond' | 'netherite' | 'steel'
+  toolLevel?: 'wood' | 'stone' | 'copper' | 'iron' | 'gold' | 'diamond' | 'netherite' | 'steel'
   miningSpeed?: number
   armorType?: 'helmet' | 'chestplate' | 'leggings' | 'boots'
   armorPoints?: number
@@ -168,6 +168,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   repeater: { id: 'repeater', name: '红石中继器', type: 'block', stackSize: 64 },
   comparator: { id: 'comparator', name: '红石比较器', type: 'block', stackSize: 64 },
   observer: { id: 'observer', name: '侦测器', type: 'block', stackSize: 64 },
+  lever: { id: 'lever', name: '拉杆', type: 'block', stackSize: 64 },
   hopper: { id: 'hopper', name: '漏斗', type: 'block', stackSize: 64 },
 
   // === Materials ===
@@ -245,6 +246,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   wooden_pickaxe: { id: 'wooden_pickaxe', name: '木镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'wood', durability: 60, miningSpeed: 2 },
   stone_pickaxe: { id: 'stone_pickaxe', name: '石镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'stone', durability: 132, miningSpeed: 4 },
   iron_pickaxe: { id: 'iron_pickaxe', name: '铁镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'iron', durability: 251, miningSpeed: 6 },
+  copper_pickaxe: { id: 'copper_pickaxe', name: '铜镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'copper', durability: 190, miningSpeed: 5 },
   gold_pickaxe: { id: 'gold_pickaxe', name: '金镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'gold', durability: 33, miningSpeed: 12 },
   diamond_pickaxe: { id: 'diamond_pickaxe', name: '钻石镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'diamond', durability: 1562, miningSpeed: 8 },
   netherite_pickaxe: { id: 'netherite_pickaxe', name: '下界合金镐', type: 'tool', stackSize: 1, toolType: 'pickaxe', toolLevel: 'netherite', durability: 2032, miningSpeed: 9 },
@@ -253,6 +255,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   wooden_axe: { id: 'wooden_axe', name: '木斧', type: 'tool', stackSize: 1, damage: 7, durability: 60, toolType: 'axe', toolLevel: 'wood', miningSpeed: 2 },
   stone_axe: { id: 'stone_axe', name: '石斧', type: 'tool', stackSize: 1, damage: 9, durability: 132, toolType: 'axe', toolLevel: 'stone', miningSpeed: 4 },
   iron_axe: { id: 'iron_axe', name: '铁斧', type: 'tool', stackSize: 1, damage: 9, durability: 251, toolType: 'axe', toolLevel: 'iron', miningSpeed: 6 },
+  copper_axe: { id: 'copper_axe', name: '铜斧', type: 'tool', stackSize: 1, damage: 8, durability: 190, toolType: 'axe', toolLevel: 'copper', miningSpeed: 5 },
   gold_axe: { id: 'gold_axe', name: '金斧', type: 'tool', stackSize: 1, damage: 7, durability: 33, toolType: 'axe', toolLevel: 'gold', miningSpeed: 12 },
   diamond_axe: { id: 'diamond_axe', name: '钻石斧', type: 'tool', stackSize: 1, damage: 9, durability: 1562, toolType: 'axe', toolLevel: 'diamond', miningSpeed: 8 },
   netherite_axe: { id: 'netherite_axe', name: '下界合金斧', type: 'tool', stackSize: 1, damage: 10, durability: 2032, toolType: 'axe', toolLevel: 'netherite', miningSpeed: 9 },
@@ -261,6 +264,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   wooden_shovel: { id: 'wooden_shovel', name: '木铲', type: 'tool', stackSize: 1, damage: 1, durability: 60, toolType: 'shovel', toolLevel: 'wood', miningSpeed: 2 },
   stone_shovel: { id: 'stone_shovel', name: '石铲', type: 'tool', stackSize: 1, damage: 2, durability: 132, toolType: 'shovel', toolLevel: 'stone', miningSpeed: 4 },
   iron_shovel: { id: 'iron_shovel', name: '铁铲', type: 'tool', stackSize: 1, damage: 3, durability: 251, toolType: 'shovel', toolLevel: 'iron', miningSpeed: 6 },
+  copper_shovel: { id: 'copper_shovel', name: '铜铲', type: 'tool', stackSize: 1, damage: 2, durability: 190, toolType: 'shovel', toolLevel: 'copper', miningSpeed: 5 },
   gold_shovel: { id: 'gold_shovel', name: '金铲', type: 'tool', stackSize: 1, damage: 1, durability: 33, toolType: 'shovel', toolLevel: 'gold', miningSpeed: 12 },
   diamond_shovel: { id: 'diamond_shovel', name: '钻石铲', type: 'tool', stackSize: 1, damage: 4, durability: 1562, toolType: 'shovel', toolLevel: 'diamond', miningSpeed: 8 },
   netherite_shovel: { id: 'netherite_shovel', name: '下界合金铲', type: 'tool', stackSize: 1, damage: 5, durability: 2032, toolType: 'shovel', toolLevel: 'netherite', miningSpeed: 9 },
@@ -269,6 +273,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   wooden_hoe: { id: 'wooden_hoe', name: '木锄', type: 'tool', stackSize: 1, damage: 1, durability: 60, toolType: 'hoe', toolLevel: 'wood' },
   stone_hoe: { id: 'stone_hoe', name: '石锄', type: 'tool', stackSize: 1, damage: 1, durability: 132, toolType: 'hoe', toolLevel: 'stone' },
   iron_hoe: { id: 'iron_hoe', name: '铁锄', type: 'tool', stackSize: 1, damage: 1, durability: 251, toolType: 'hoe', toolLevel: 'iron' },
+  copper_hoe: { id: 'copper_hoe', name: '铜锄', type: 'tool', stackSize: 1, damage: 1, durability: 190, toolType: 'hoe', toolLevel: 'copper' },
   gold_hoe: { id: 'gold_hoe', name: '金锄', type: 'tool', stackSize: 1, damage: 1, durability: 33, toolType: 'hoe', toolLevel: 'gold' },
   diamond_hoe: { id: 'diamond_hoe', name: '钻石锄', type: 'tool', stackSize: 1, damage: 1, durability: 1562, toolType: 'hoe', toolLevel: 'diamond' },
   netherite_hoe: { id: 'netherite_hoe', name: '下界合金锄', type: 'tool', stackSize: 1, damage: 1, durability: 2032, toolType: 'hoe', toolLevel: 'netherite' },
@@ -277,6 +282,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   wooden_sword: { id: 'wooden_sword', name: '木剑', type: 'weapon', stackSize: 1, damage: 4, durability: 60, toolType: 'sword', toolLevel: 'wood' },
   stone_sword: { id: 'stone_sword', name: '石剑', type: 'weapon', stackSize: 1, damage: 5, durability: 132, toolType: 'sword', toolLevel: 'stone' },
   iron_sword: { id: 'iron_sword', name: '铁剑', type: 'weapon', stackSize: 1, damage: 6, durability: 251, toolType: 'sword', toolLevel: 'iron' },
+  copper_sword: { id: 'copper_sword', name: '铜剑', type: 'weapon', stackSize: 1, damage: 5, durability: 190, toolType: 'sword', toolLevel: 'copper' },
   gold_sword: { id: 'gold_sword', name: '金剑', type: 'weapon', stackSize: 1, damage: 4, durability: 33, toolType: 'sword', toolLevel: 'gold' },
   diamond_sword: { id: 'diamond_sword', name: '钻石剑', type: 'weapon', stackSize: 1, damage: 7, durability: 1562, toolType: 'sword', toolLevel: 'diamond' },
   netherite_sword: { id: 'netherite_sword', name: '下界合金剑', type: 'weapon', stackSize: 1, damage: 8, durability: 2032, toolType: 'sword', toolLevel: 'netherite' },
@@ -322,6 +328,10 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   iron_chestplate: { id: 'iron_chestplate', name: '铁胸甲', type: 'armor', stackSize: 1, armorType: 'chestplate', armorPoints: 6, durability: 240 },
   iron_leggings: { id: 'iron_leggings', name: '铁护腿', type: 'armor', stackSize: 1, armorType: 'leggings', armorPoints: 5, durability: 225 },
   iron_boots: { id: 'iron_boots', name: '铁靴子', type: 'armor', stackSize: 1, armorType: 'boots', armorPoints: 2, durability: 195 },
+  copper_helmet: { id: 'copper_helmet', name: '铜头盔', type: 'armor', stackSize: 1, armorType: 'helmet', armorPoints: 2, durability: 132 },
+  copper_chestplate: { id: 'copper_chestplate', name: '铜胸甲', type: 'armor', stackSize: 1, armorType: 'chestplate', armorPoints: 5, durability: 192 },
+  copper_leggings: { id: 'copper_leggings', name: '铜护腿', type: 'armor', stackSize: 1, armorType: 'leggings', armorPoints: 4, durability: 180 },
+  copper_boots: { id: 'copper_boots', name: '铜靴子', type: 'armor', stackSize: 1, armorType: 'boots', armorPoints: 1, durability: 156 },
 
   // === Armor: Gold ===
   golden_helmet: { id: 'golden_helmet', name: '金头盔', type: 'armor', stackSize: 1, armorType: 'helmet', armorPoints: 2, durability: 77 },
@@ -405,8 +415,67 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   // 调试棒 (工具 - 翻转方块状态)
   debug_stick: { id: 'debug_stick', name: '调试棒', type: 'tool', stackSize: 1 },
 
-  // === 附魔书 ===
+  // === 附魔书（创造物品栏中会展开为22种变体） ===
   enchanted_book: { id: 'enchanted_book', name: '附魔书', type: 'utility', stackSize: 1 },
+
+  // === 酿造材料 ===
+  glass_bottle: { id: 'glass_bottle', name: '玻璃瓶', type: 'utility', stackSize: 64 },
+  water_bottle: { id: 'water_bottle', name: '水瓶', type: 'utility', stackSize: 1 },
+  nether_wart: { id: 'nether_wart', name: '下界疣', type: 'utility', stackSize: 64 },
+  glistering_melon: { id: 'glistering_melon', name: '闪烁的西瓜片', type: 'utility', stackSize: 64 },
+  phantom_membrane: { id: 'phantom_membrane', name: '幻翼膜', type: 'utility', stackSize: 64 },
+  fermented_spider_eye: { id: 'fermented_spider_eye', name: '发酵蛛眼', type: 'utility', stackSize: 64 },
+  spider_eye: { id: 'spider_eye', name: '蜘蛛眼', type: 'utility', stackSize: 64 },
+  rabbit_foot: { id: 'rabbit_foot', name: '兔子脚', type: 'utility', stackSize: 64 },
+  pufferfish: { id: 'pufferfish', name: '河豚', type: 'food', stackSize: 64 },
+  turtle_helmet: { id: 'turtle_helmet', name: '海龟壳', type: 'armor', stackSize: 1 },
+  magma_cream: { id: 'magma_cream', name: '岩浆膏', type: 'utility', stackSize: 64 },
+  ghast_tear: { id: 'ghast_tear', name: '恶魂之泪', type: 'utility', stackSize: 64 },
+  dragon_breath: { id: 'dragon_breath', name: '龙息', type: 'utility', stackSize: 64 },
+
+  // === 药水 (饮用) ===
+  potion_healing: { id: 'potion_healing', name: '治疗药水', type: 'utility', stackSize: 1 },
+  potion_healing_2: { id: 'potion_healing_2', name: '治疗药水 II', type: 'utility', stackSize: 1 },
+  potion_strength: { id: 'potion_strength', name: '力量药水', type: 'utility', stackSize: 1 },
+  potion_strength_2: { id: 'potion_strength_2', name: '力量药水 II', type: 'utility', stackSize: 1 },
+  potion_swiftness: { id: 'potion_swiftness', name: '迅捷药水', type: 'utility', stackSize: 1 },
+  potion_swiftness_2: { id: 'potion_swiftness_2', name: '迅捷药水 II', type: 'utility', stackSize: 1 },
+  potion_fire_resistance: { id: 'potion_fire_resistance', name: '抗火药水', type: 'utility', stackSize: 1 },
+  potion_fire_resistance_l: { id: 'potion_fire_resistance_l', name: '抗火药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_regeneration: { id: 'potion_regeneration', name: '再生药水', type: 'utility', stackSize: 1 },
+  potion_regeneration_2: { id: 'potion_regeneration_2', name: '再生药水 II', type: 'utility', stackSize: 1 },
+  potion_night_vision: { id: 'potion_night_vision', name: '夜视药水', type: 'utility', stackSize: 1 },
+  potion_night_vision_l: { id: 'potion_night_vision_l', name: '夜视药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_invisibility: { id: 'potion_invisibility', name: '隐身药水', type: 'utility', stackSize: 1 },
+  potion_invisibility_l: { id: 'potion_invisibility_l', name: '隐身药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_water_breathing: { id: 'potion_water_breathing', name: '水下呼吸药水', type: 'utility', stackSize: 1 },
+  potion_water_breathing_l: { id: 'potion_water_breathing_l', name: '水下呼吸药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_leaping: { id: 'potion_leaping', name: '跳跃药水', type: 'utility', stackSize: 1 },
+  potion_leaping_2: { id: 'potion_leaping_2', name: '跳跃药水 II', type: 'utility', stackSize: 1 },
+  potion_slow_falling: { id: 'potion_slow_falling', name: '缓降药水', type: 'utility', stackSize: 1 },
+  potion_slow_falling_l: { id: 'potion_slow_falling_l', name: '缓降药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_poison: { id: 'potion_poison', name: '剧毒药水', type: 'utility', stackSize: 1 },
+  potion_poison_2: { id: 'potion_poison_2', name: '剧毒药水 II', type: 'utility', stackSize: 1 },
+  potion_weakness: { id: 'potion_weakness', name: '虚弱药水', type: 'utility', stackSize: 1 },
+  potion_weakness_l: { id: 'potion_weakness_l', name: '虚弱药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_slowness: { id: 'potion_slowness', name: '迟缓药水', type: 'utility', stackSize: 1 },
+  potion_slowness_l: { id: 'potion_slowness_l', name: '迟缓药水 (延长)', type: 'utility', stackSize: 1 },
+  potion_harming: { id: 'potion_harming', name: '伤害药水', type: 'utility', stackSize: 1 },
+  potion_harming_2: { id: 'potion_harming_2', name: '伤害药水 II', type: 'utility', stackSize: 1 },
+
+  // === 喷溅药水 ===
+  splash_healing: { id: 'splash_healing', name: '喷溅型治疗药水', type: 'utility', stackSize: 1 },
+  splash_healing_2: { id: 'splash_healing_2', name: '喷溅型治疗药水 II', type: 'utility', stackSize: 1 },
+  splash_harming: { id: 'splash_harming', name: '喷溅型伤害药水', type: 'utility', stackSize: 1 },
+  splash_harming_2: { id: 'splash_harming_2', name: '喷溅型伤害药水 II', type: 'utility', stackSize: 1 },
+  splash_poison: { id: 'splash_poison', name: '喷溅型剧毒药水', type: 'utility', stackSize: 1 },
+  splash_poison_2: { id: 'splash_poison_2', name: '喷溅型剧毒药水 II', type: 'utility', stackSize: 1 },
+  splash_slowness: { id: 'splash_slowness', name: '喷溅型迟缓药水', type: 'utility', stackSize: 1 },
+  splash_weakness: { id: 'splash_weakness', name: '喷溅型虚弱药水', type: 'utility', stackSize: 1 },
+  splash_regeneration: { id: 'splash_regeneration', name: '喷溅型再生药水', type: 'utility', stackSize: 1 },
+  splash_strength: { id: 'splash_strength', name: '喷溅型力量药水', type: 'utility', stackSize: 1 },
+  splash_swiftness: { id: 'splash_swiftness', name: '喷溅型迅捷药水', type: 'utility', stackSize: 1 },
+  splash_fire_resistance: { id: 'splash_fire_resistance', name: '喷溅型抗火药水', type: 'utility', stackSize: 1 },
 }
 
 export function getItemDefinition(id: string): ItemDefinition | undefined {

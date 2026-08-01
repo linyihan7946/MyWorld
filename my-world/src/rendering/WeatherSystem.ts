@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-export type WeatherType = 'clear' | 'rain' | 'snow' | 'thunder'
+export type WeatherType = 'clear' | 'rain' | 'drizzle' | 'snow' | 'blizzard' | 'thunder' | 'sandstorm' | 'foggy'
 
 /**
  * WeatherSystem — particle-based rain, snow, and thunder effects.
@@ -182,33 +182,36 @@ export class WeatherSystem {
     }
 
     // Intensity
-    const targetIntensity = this.current === 'clear' ? 0
-      : (this.current === 'thunder' ? 1.0 : 0.8)
+    const tgt = this.current
+    const targetIntensity = tgt === 'clear' || tgt === 'foggy' ? 0
+      : (tgt === 'thunder' || tgt === 'blizzard' || tgt === 'sandstorm' ? 1.0
+        : (tgt === 'drizzle' ? 0.45 : 0.8))
     this.intensity += (targetIntensity - this.intensity) * Math.min(dt * 2, 1)
 
-    const active = this.current !== 'clear'
-    const isSnow = this.current === 'snow'
+    const active = this.current !== 'clear' && this.current !== 'foggy'
+    const isSnow = this.current === 'snow' || this.current === 'blizzard'
+    const isRain = this.current === 'rain' || this.current === 'drizzle' || this.current === 'thunder'
 
-    // Rain
+    // Rain particles (rain / drizzle / thunder)
     if (this.rainParticles) {
-      this.rainParticles.visible = active && !isSnow
+      this.rainParticles.visible = active && isRain
       if (this.rainParticles.visible) {
-        this.updateRain(playerPos, dt)
+        this.updateRain(playerPos, dt, this.current)
       }
     }
 
-    // Snow
+    // Snow particles (snow / blizzard)
     if (this.snowParticles) {
       this.snowParticles.visible = active && isSnow
       if (this.snowParticles.visible) {
-        this.updateSnow(playerPos, dt)
+        this.updateSnow(playerPos, dt, this.current)
       }
     }
 
     // Thunder — start immediately on transition
     if (this.current === 'thunder') {
       if (this.lastActiveWeather !== 'thunder') {
-        this.thunderTimer = 0.3 // first flash almost immediately
+        this.thunderTimer = 0.3
         this.thunderStrikes = []
         this.thunderStrikeDelay = 0
         this.lastActiveWeather = 'thunder'
@@ -340,18 +343,21 @@ export class WeatherSystem {
     }
   }
 
-  private updateRain(origin: THREE.Vector3, dt: number): void {
+  private updateRain(origin: THREE.Vector3, dt: number, type: WeatherType): void {
     const pts = this.rainParticles!
     const pos = pts.geometry.attributes.position.array as Float32Array
     const count = this.rainCount
     const cx = origin.x, cy = origin.y, cz = origin.z
-    const windX = 2.5, windZ = 1.2
+    // 不同天气风速不同
+    const windMult = type === 'thunder' ? 1.8 : type === 'drizzle' ? 0.5 : 1.0
+    const windX = 2.5 * windMult, windZ = 1.2 * windMult
+    const fallMult = type === 'drizzle' ? 0.55 : 1.0
     const r2 = this.radius
 
     for (let i = 0; i < count; i++) {
       const j = i * 3
       // Fall
-      pos[j + 1] -= (this.rainVelocities?.[i] ?? 25) * dt
+      pos[j + 1] -= (this.rainVelocities?.[i] ?? 25) * dt * fallMult
       // Wind drift
       pos[j]     += windX * dt
       pos[j + 2] += windZ * dt
@@ -373,19 +379,20 @@ export class WeatherSystem {
     mat.opacity = this.intensity * 0.55
   }
 
-  private updateSnow(origin: THREE.Vector3, dt: number): void {
+  private updateSnow(origin: THREE.Vector3, dt: number, type: WeatherType): void {
     const pts = this.snowParticles!
     const pos = pts.geometry.attributes.position.array as Float32Array
     const count = this.snowCount
     const cx = origin.x, cy = origin.y, cz = origin.z
     const r2 = this.radius
-    const driftStrength = 0.6
+    const blizzard = type === 'blizzard'
+    const driftStrength = blizzard ? 1.8 : 0.6
+    const fallMult = blizzard ? 2.0 : 1.0
     const t = performance.now() * 0.001
 
     for (let i = 0; i < count; i++) {
       const j = i * 3
-      const fallSpeed = this.snowVelocities?.[i] ?? 1.0
-      // Gentle fall
+      const fallSpeed = (this.snowVelocities?.[i] ?? 1.0) * fallMult
       pos[j + 1] -= fallSpeed * dt
       // Swaying drift
       pos[j]     += Math.sin(t * 1.3 + i * 0.07) * driftStrength * dt
@@ -402,7 +409,7 @@ export class WeatherSystem {
     pts.geometry.attributes.position.needsUpdate = true
 
     const mat = pts.material as THREE.PointsMaterial
-    mat.opacity = this.intensity * 0.7
+    mat.opacity = this.intensity * (blizzard ? 0.85 : 0.7)
   }
 
   private updateThunder(dt: number): void {

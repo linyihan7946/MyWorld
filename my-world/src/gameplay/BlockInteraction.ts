@@ -26,6 +26,7 @@ export class BlockInteraction {
   // Mining mechanics
   private cachedHitsNeeded = DEFAULT_BREAK_HITS
   private cachedToolId: string | null = null
+  private cachedBlockType: BlockType | null = null
 
   // Highlight mesh
   private highlightMesh: THREE.LineSegments
@@ -68,20 +69,21 @@ export class BlockInteraction {
       )
       this.highlightMesh.visible = true
 
-      // Reset break progress if target changed OR tool changed
+      // Reset break progress if target changed OR tool changed OR block type changed
       const currentTool = this.getHeldTool()
-      const targetChanged = !this.lastBreakBlock || !this.lastBreakBlock.equals(hit.position)
+      const hitBlockType = this.chunkManager.getBlock(hit.position.x, hit.position.y, hit.position.z) as BlockType
+      const posChanged = !this.lastBreakBlock || !this.lastBreakBlock.equals(hit.position)
+      const typeChanged = hitBlockType !== this.cachedBlockType
       const toolChanged = currentTool !== this.cachedToolId
 
-      if (targetChanged || toolChanged) {
+      if (posChanged || typeChanged || toolChanged) {
         this.breakProgress = 0
         this.lastBreakBlock = hit.position.clone()
         this.cachedToolId = currentTool
+        this.cachedBlockType = hitBlockType
 
-        // Calculate hits needed with current tool
-        const blockType = this.chunkManager.getBlock(hit.position.x, hit.position.y, hit.position.z) as BlockType
-        if (blockType !== BlockType.AIR && blockType !== BlockType.WATER && isBreakable(blockType)) {
-          this.cachedHitsNeeded = calculateHitsNeeded(blockType, currentTool)
+        if (hitBlockType !== BlockType.AIR && hitBlockType !== BlockType.WATER && isBreakable(hitBlockType)) {
+          this.cachedHitsNeeded = calculateHitsNeeded(hitBlockType, currentTool)
         } else {
           this.cachedHitsNeeded = DEFAULT_BREAK_HITS
         }
@@ -92,6 +94,7 @@ export class BlockInteraction {
       this.highlightMesh.visible = false
       this.breakProgress = 0
       this.lastBreakBlock = null
+      this.cachedBlockType = null
     }
   }
 
@@ -99,7 +102,7 @@ export class BlockInteraction {
    * 击打方块（左键）
    * @param instant 是否瞬间破坏（创造模式）
    */
-  breakHit(instant = false): { breaking: boolean; progress: number; canHarvest: boolean } {
+  breakHit(instant = false, creativeBoost = false): { breaking: boolean; progress: number; canHarvest: boolean } {
     if (!this.targetBlock) return { breaking: false, progress: 0, canHarvest: false }
 
     const blockType = this.chunkManager.getBlock(
@@ -117,10 +120,10 @@ export class BlockInteraction {
     }
 
     const heldTool = this.getHeldTool()
-    const harvest = canHarvestDrop(blockType as BlockType, heldTool, instant)
+    const harvest = canHarvestDrop(blockType as BlockType, heldTool, instant || creativeBoost)
 
-    // 创造模式瞬间破坏
-    if (instant) {
+    // 遗留下来的瞬间破坏模式
+    if (instant && !creativeBoost) {
       this.chunkManager.setBlock(this.targetBlock.x, this.targetBlock.y, this.targetBlock.z, BlockType.AIR)
       this.eventBus.emit('block:broke', {
         position: this.targetBlock.clone(),
@@ -129,6 +132,7 @@ export class BlockInteraction {
       })
       this.breakProgress = 0
       this.lastBreakBlock = null
+      this.cachedBlockType = null
       return { breaking: false, progress: 0, canHarvest: true }
     }
 
@@ -136,7 +140,8 @@ export class BlockInteraction {
     const inv = useInventoryStore()
     const slot = inv.hotbar[inv.selectedSlot]
     const effLvl = getEnchantLevel(slot?.enchantments, 'efficiency')
-    const hitPower = 1 + effLvl * 0.3 // Efficiency I=1.3x, V=2.5x
+    const creativeMult = creativeBoost ? 8.0 : 1.0
+    const hitPower = (1 + effLvl * 0.3) * creativeMult
     this.breakProgress += hitPower
     const hitsNeeded = Math.max(1, this.cachedHitsNeeded)
     const progress = this.breakProgress / hitsNeeded
@@ -156,6 +161,7 @@ export class BlockInteraction {
       })
       this.breakProgress = 0
       this.lastBreakBlock = null
+      this.cachedBlockType = null
       return { breaking: false, progress: 0, canHarvest: harvest }
     }
 
@@ -239,17 +245,25 @@ export class BlockInteraction {
     return true
   }
 
+  /**
+   * 获取水平朝向：方块正面朝向玩家正在看的方向（与相机朝向一致）
+   * e.g. 玩家看东(＋X) → 返回 (1,0,0)，活塞头朝东推出
+   */
   private getHorizontalFacing(): THREE.Vector3 {
-    // Directional block fronts face the player, matching piston/observer placement.
     if (Math.abs(this.cameraDirection.x) > Math.abs(this.cameraDirection.z)) {
-      return new THREE.Vector3(this.cameraDirection.x > 0 ? -1 : 1, 0, 0)
+      return new THREE.Vector3(this.cameraDirection.x > 0 ? 1 : -1, 0, 0)
     }
-    return new THREE.Vector3(0, 0, this.cameraDirection.z > 0 ? -1 : 1)
+    return new THREE.Vector3(0, 0, this.cameraDirection.z > 0 ? 1 : -1)
   }
 
+  /**
+   * 获取放置朝向（活塞/侦测器专用）：
+   * 优先检查垂直方向——玩家俯视/仰视时活塞朝上/朝下；
+   * 否则使用水平朝向。
+   */
   private getPlacementFacing(): THREE.Vector3 {
     if (Math.abs(this.cameraDirection.y) > Math.max(Math.abs(this.cameraDirection.x), Math.abs(this.cameraDirection.z))) {
-      return new THREE.Vector3(0, this.cameraDirection.y > 0 ? -1 : 1, 0)
+      return new THREE.Vector3(0, this.cameraDirection.y > 0 ? 1 : -1, 0)
     }
     return this.getHorizontalFacing()
   }
@@ -310,6 +324,15 @@ export class BlockInteraction {
     ) as BlockType
     if (blockType === BlockType.AIR) return null
     return { position: this.targetBlock.clone(), blockType }
+  }
+
+  /** 获取目标方块相邻的空气位置（用于传送门激活等场景） */
+  getAdjacentPlacementPos(): THREE.Vector3 | null {
+    if (!this.targetBlock || !this.targetNormal) return null
+    const pos = this.targetBlock.clone().add(this.targetNormal)
+    // 确保相邻位置确实在可达范围内
+    if (pos.y < 0 || pos.y >= 256) return null
+    return pos
   }
 
   dispose(): void {

@@ -1,5 +1,5 @@
 /**
- * 方块片段着色器
+ * 方块片段着色器 — 增强光照版
  */
 export const blockFragmentShader = /* glsl */ `
 uniform sampler2D atlas;
@@ -11,8 +11,9 @@ uniform vec3 sunDirection;
 uniform vec3 sunColor;
 uniform float ambientLight;
 uniform int pointLightCount;
-uniform vec3 pointLightPositions[16];
-uniform vec3 pointLightColors[16];
+uniform vec3 pointLightPositions[8];
+uniform vec3 pointLightColors[8];
+uniform vec3 uCameraPos; // 相机位置（自定义名称避免与Three.js内置冲突）
 
 varying vec2 vUv;
 varying vec3 vNormal;
@@ -20,6 +21,7 @@ varying vec3 vWorldPos;
 varying float vFogDepth;
 varying float vIsWater;
 varying float vAO;
+varying float vHeight;
 
 void main() {
   vec4 texColor = texture2D(atlas, vUv);
@@ -29,45 +31,62 @@ void main() {
   float alpha = texColor.a;
   vec3 color = texColor.rgb;
   if (vIsWater > 0.5) {
-    color = mix(color, vec3(0.12, 0.35, 0.75), 0.45);
-    alpha = 0.55;
+    color = mix(color, vec3(0.12, 0.42, 0.82), 0.5);
+    alpha = 0.5;
   }
 
-  // ── Directional sun light ──
-  float ndl = max(dot(vNormal, normalize(sunDirection)), 0.0);
-  vec3 diffuse = sunColor * mix(0.15, 0.55, ndl);
-  vec3 ambient = vec3(ambientLight);
+  vec3 N = normalize(vNormal);
+  vec3 L = normalize(sunDirection);
+  float ndl = max(dot(N, L), 0.0);
 
-  // Face-based directional bias (preserves cube readability)
+  // 环境光 + 漫反射
+  float diffuseStrength = mix(0.22, 0.65, ndl);
+  vec3 diffuse = sunColor * diffuseStrength;
+  vec3 ambient = vec3(ambientLight * 1.15);
+
+  // 天空光：Y 越高越亮
+  float skyLight = smoothstep(0.0, 128.0, vHeight) * 0.18;
+  float topFacing = smoothstep(0.6, 1.0, N.y);
+  skyLight += topFacing * 0.12;
+
+  // 镜面高光
+  vec3 V = normalize(uCameraPos - vWorldPos);
+  vec3 H = normalize(L + V);
+  float spec = pow(max(dot(N, H), 0.0), 32.0);
+  float specOcclusion = mix(0.3, 1.0, vAO);
+  vec3 specular = sunColor * spec * 0.25 * specOcclusion;
+
+  // 面的方向性偏置
   float faceShade = 1.0;
-  if (abs(vNormal.y) > 0.5) {
-    faceShade = vNormal.y > 0.0 ? 1.0 : 0.5;
-  } else if (abs(vNormal.x) > 0.5) {
-    faceShade = 0.8;
+  float ay = abs(N.y);
+  if (ay > 0.5) {
+    faceShade = N.y > 0.0 ? 1.0 : 0.52;
+  } else if (abs(N.x) > 0.5) {
+    faceShade = 0.82;
   } else {
-    faceShade = 0.7;
+    faceShade = 0.72;
   }
 
-  // ── Local point lights ──
-  // 缩减到 16 盏；用距离平方提前跳过远距离灯
+  // 局部点光源
   vec3 localLight = vec3(0.0);
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 8; i++) {
     if (i >= pointLightCount) break;
     vec3 diff = vWorldPos - pointLightPositions[i];
     float distSq = dot(diff, diff);
-    if (distSq > 64.0) continue;
-    float attenuation = 1.0 - sqrt(distSq) * 0.125;
+    if (distSq > 72.0) continue;
+    float dist = sqrt(distSq);
+    float attenuation = 1.0 - dist / 8.485;
     if (attenuation <= 0.0) continue;
     attenuation *= attenuation;
-    localLight += pointLightColors[i] * attenuation * 2.0;
+    localLight += pointLightColors[i] * attenuation * 3.5;
   }
 
-  // ── Combine ──
-  float aoFactor = mix(0.5, 1.0, vAO);
-  vec3 sunLighting = (ambient + diffuse) * faceShade * aoFactor;
+  // 合成
+  float aoFactor = mix(0.45, 1.0, vAO);
+  vec3 sunLighting = (ambient + diffuse + skyLight) * faceShade * aoFactor + specular;
   vec3 finalColor = color * (sunLighting + localLight);
 
-  // ── Distance fog ──
+  // 距离雾
   float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
   finalColor = mix(finalColor, fogColor, fogFactor);
 

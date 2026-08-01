@@ -8,6 +8,10 @@ import { Sky } from '@/rendering/Sky'
 import { CloudSystem } from '@/rendering/CloudSystem'
 import { WeatherSystem, type WeatherType } from '@/rendering/WeatherSystem'
 import { WeatherAudio } from '@/rendering/WeatherAudio'
+import { GameAudio } from '@/rendering/GameAudio'
+import { BrewingSystem } from '@/gameplay/BrewingSystem'
+import { potionEffects } from '@/gameplay/PotionEffect'
+import { playerStats, updateHunger, exhaustJump, exhaustMine, exhaustDamage, tryEatFood, addExperience } from '@/gameplay/PlayerStats'
 import { InputManager } from '@/input/InputManager'
 import { WorldGenerator } from '@/world/WorldGenerator'
 import { ChunkManager } from '@/world/ChunkManager'
@@ -16,7 +20,7 @@ import { BlockInteraction } from '@/gameplay/BlockInteraction'
 import { RedstoneSystem } from '@/gameplay/RedstoneSystem'
 import { SaveSystem } from '@/gameplay/SaveSystem'
 import { BlockType, BLOCK_REGISTRY } from '@/types/blocks'
-import { PLAYER_SPEED, PLAYER_SPRINT_SPEED, JUMP_VELOCITY, MOUSE_SENSITIVITY, PLAYER_WIDTH, PLAYER_HEIGHT, GRAVITY } from '@/utils/constants'
+import { PLAYER_SPEED, PLAYER_SPRINT_SPEED, JUMP_VELOCITY, MOUSE_SENSITIVITY, PLAYER_WIDTH, PLAYER_HEIGHT, GRAVITY, RENDER_DISTANCE } from '@/utils/constants'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { usePlayerStore } from '@/ui/stores/playerStore'
 import { ITEM_REGISTRY, getItemDefinition } from '@/types/items'
@@ -161,6 +165,7 @@ const ITEM_TO_BLOCK: Record<string, BlockType> = {
   structure_void: BlockType.STRUCTURE_VOID,
   steel_ore: BlockType.STEEL_ORE,
   steel_block: BlockType.STEEL_BLOCK,
+  lever: BlockType.LEVER,
 }
 
 /**
@@ -334,6 +339,8 @@ export class Engine {
   private static readonly _rainSky = new THREE.Color(0x2a3a4a)
   private static readonly _snowSky = new THREE.Color(0xbcc8d4)
   private static readonly _thunderSky = new THREE.Color(0x0c1018)
+  private static readonly _sandSky = new THREE.Color(0xc4a060)
+  private static readonly _fogSky = new THREE.Color(0xa0aab4)
   private static readonly _tmpColor1 = new THREE.Color()
   private static readonly _tmpColor2 = new THREE.Color()
   private static readonly _tmpColor3 = new THREE.Color()
@@ -353,6 +360,7 @@ export class Engine {
   private cloudSystem!: CloudSystem
   private weatherSystem!: WeatherSystem
   private weatherAudio!: WeatherAudio
+  private gameAudio!: GameAudio
 
   private worldGenerator!: WorldGenerator
   private chunkManager!: ChunkManager
@@ -386,6 +394,7 @@ export class Engine {
   // === NEW: Fall damage ===
   private fallStartY = 0
   private wasInAir = false
+  private footstepAccum = 0 // 步声音效节流
 
   // === NEW: 屏障方块可见性追踪 ===
   private wasHoldingBarrier = false
@@ -404,6 +413,7 @@ export class Engine {
 
   // === NEW: Death and health ===
   private isDead = false
+  private isTeleporting = false  // 防止传送期间重复触发
   private healthRegenTimer = 0     // accumulator for health regeneration (seconds)
   private lastDamageTime = 0       // timestamp of last damage taken
 
@@ -424,34 +434,43 @@ export class Engine {
   private lastChunkX = -9999
   private lastChunkZ = -9999
 
+  // 缓存 Vector3 对象，避免每帧 GC 分配（hot path: update movement）
+  private static readonly _movFwd = new THREE.Vector3()
+  private static readonly _movRight = new THREE.Vector3()
+  private static readonly _movDir = new THREE.Vector3()
+
   private container: HTMLElement
   private seed: number
   private superflat: boolean
   private isTouchDevice = false
 
+  // === 调试渲染: 区块边界 & 碰撞箱 ===
+  private chunkBorderGrid: THREE.LineSegments | null = null
+  private entityHitboxes = new Map<string, THREE.LineSegments>()
+
   constructor(container: HTMLElement, seed?: number, superflat = false) {
     this.container = container
     this.seed = seed ?? Math.floor(Math.random() * 2147483647)
     this.superflat = superflat
-    this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    // 仅真正的触摸屏设备才识别为手机（precision touchpad 不算）
+    this.isTouchDevice = window.matchMedia('(pointer: coarse)').matches
     this.eventBus = new EventBus()
-    // 移动设备帧率上限 30fps，节省电量；PC 60fps
-    this.gameLoop = new GameLoop(this.isTouchDevice ? 30 : 60)
+    this.gameLoop = new GameLoop() // 跟随显示器刷新率，不限制帧率
     this.inputManager = new InputManager()
   }
 
   async init(): Promise<void> {
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isTouchDevice, // 移动端关闭抗锯齿
+      antialias: true, // 全平台开启抗锯齿
       powerPreference: 'high-performance',
     })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
-    // 移动端最大 1x 像素比，PC 最大 2x
-    this.renderer.setPixelRatio(this.isTouchDevice ? 1 : Math.min(window.devicePixelRatio, 2))
+    // PC 最高 3x 像素比（Retina 清晰），手机最高 2x
+    this.renderer.setPixelRatio(this.isTouchDevice ? Math.min(window.devicePixelRatio, 2) : Math.min(window.devicePixelRatio, 3))
     this.renderer.setClearColor(0x87CEEB)
     this.renderer.shadowMap.enabled = true
-    // 移动端使用更便宜的 PCFShadowMap
-    this.renderer.shadowMap.type = this.isTouchDevice ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap
+    // 全平台使用柔和阴影
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.container.appendChild(this.renderer.domElement)
 
     this.scene = new THREE.Scene()
@@ -472,6 +491,7 @@ export class Engine {
     this.weatherSystem.addToScene(this.scene)
 
     this.weatherAudio = new WeatherAudio()
+    this.gameAudio = new GameAudio()
     this.weatherSystem.onThunder = (loudness) => this.weatherAudio.triggerThunder(loudness)
     this.weatherSystem.getGroundHeight = (x, z) => this.chunkManager.getHeightAt(x, z)
     this.weatherSystem.getPlayerPos = () => this.playerPosition.clone()
@@ -498,7 +518,7 @@ export class Engine {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 0.8)
     this.sunLight.position.set(50, 100, 30)
     this.sunLight.castShadow = true
-    this.sunLight.shadow.mapSize.set(this.isTouchDevice ? 512 : 1024, this.isTouchDevice ? 512 : 1024)
+    this.sunLight.shadow.mapSize.set(this.isTouchDevice ? 1024 : 2048, this.isTouchDevice ? 1024 : 2048)
     this.sunLight.shadow.camera.left = -32
     this.sunLight.shadow.camera.right = 32
     this.sunLight.shadow.camera.top = 32
@@ -513,11 +533,26 @@ export class Engine {
     // Underwater overlay (fullscreen quad rendered by UI, we track state)
     this.isUnderwater = false
 
-    this.inputManager.attach(this.renderer.domElement)
+    this.inputManager.attach(this.renderer.domElement, this.isTouchDevice)
 
     // Init audio on first pointer lock (browser requires user gesture)
     this.inputManager.onPointerLockChange = (locked) => {
-      if (locked) this.weatherAudio.init()
+      if (locked) {
+        this.weatherAudio.init()
+        this.gameAudio.init()
+      }
+    }
+
+    // 药水瞬间效果回调
+    potionEffects.onInstantEffect = (id, level) => {
+      if (id === 'instant_health') {
+        const p = usePlayerStore()
+        p.health = Math.min(p.maxHealth, p.health + level * 4)
+      } else if (id === 'instant_damage') {
+        this.applyDamage(level * 3, 'magic')
+      } else if (id === 'saturation') {
+        // 饱和恢复饥饿值
+      }
     }
 
     this.setupInputHandlers()
@@ -601,58 +636,141 @@ export class Engine {
     )
   }
 
+  private f3Held = false
+
+  /** 游戏快捷键仅在指针锁定时生效；解锁后交还系统/浏览器 */
+  private get shortcutsEnabled(): boolean {
+    return this.inputManager.locked
+  }
+
   private setupInputHandlers(): void {
     this.inputManager.onKeyDown = (key: string) => {
-      // V键: 切换视角 (第一/第三人称) - 替代F5避免浏览器刷新
-      if (key === 'KeyV') this.cameraManager.toggleMode()
+      const ui = useUIStore()
+      const pStore = usePlayerStore()
+      const locked = this.shortcutsEnabled
 
-      // H键: 手动保存 - 替代F2
+      // ── 始终可用 ──
+      // Escape: 退出锁定 / 关闭界面
+      if (key === 'Escape') {
+        const inv = useInventoryStore()
+        if (inv.showInventory) {
+          inv.showInventory = false
+          ui.closeAll()
+          return
+        }
+        if (document.pointerLockElement) {
+          document.exitPointerLock()
+        } else if (!this.isTouchDevice) {
+          this.renderer.domElement.requestPointerLock()
+        }
+        return
+      }
+
+      // E: 打开背包（同时解锁鼠标）
+      if (key === 'KeyE') {
+        if (document.pointerLockElement) document.exitPointerLock()
+        return
+      }
+
+      // 1-9: 热键栏（始终可用，无需锁定）
+      if (key >= 'Digit1' && key <= 'Digit9') {
+        const slot = parseInt(key.replace('Digit', '')) - 1
+        useInventoryStore().selectSlot(slot)
+        pStore.selectedSlot = slot
+        this.eventBus.emit('hotbar:select', slot)
+        return
+      }
+
+      // ── 以下快捷键仅在指针锁定时生效 ──
+      if (!locked) return
+
+      // F3 组合键追踪
+      if (key === 'F3') { this.f3Held = true; return }
+
+      if (this.f3Held) {
+        if (key === 'KeyA') {
+          this.chunkManager.markAllDirty()
+          pStore.breakToolName = '§a区块已刷新'
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+          this.f3Held = false; return
+        }
+        if (key === 'KeyB') {
+          ui.showHitboxes = !ui.showHitboxes
+          pStore.breakToolName = `碰撞箱: ${ui.showHitboxes ? '§a显示' : '§c隐藏'}`
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+          this.f3Held = false; return
+        }
+        if (key === 'KeyG') {
+          ui.showChunkBorders = !ui.showChunkBorders
+          pStore.breakToolName = `区块边界: ${ui.showChunkBorders ? '§a显示' : '§c隐藏'}`
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+          this.f3Held = false; return
+        }
+        if (key === 'KeyH') {
+          ui.showAdvancedTooltips = !ui.showAdvancedTooltips
+          pStore.breakToolName = `高级提示: ${ui.showAdvancedTooltips ? '§a显示' : '§c隐藏'}`
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+          this.f3Held = false; return
+        }
+        this.f3Held = false
+      }
+
+      if (key === 'F3') {
+        ui.showDebug = !ui.showDebug
+        pStore.breakToolName = `调试: ${ui.showDebug ? '§a显示' : '§c隐藏'}`
+        setTimeout(() => { pStore.breakToolName = null }, 2000)
+        return
+      }
+
+      if (key === 'F1') {
+        ui.showHUD = !ui.showHUD
+        return
+      }
+
+      if (key === 'F5' || key === 'KeyV') this.cameraManager.toggleMode()
+
+      if (key === 'F11') {
+        if (document.fullscreenElement) {
+          document.exitFullscreen()
+        } else {
+          document.documentElement.requestFullscreen()
+        }
+        return
+      }
+
       if (key === 'KeyH') {
         const saved = this.saveGame()
-        const pStore = usePlayerStore()
         pStore.breakToolName = saved ? '✓ 已保存' : '✗ 保存失败'
         setTimeout(() => { pStore.breakToolName = null }, 2000)
       }
 
-      if (key === 'KeyE') {
-        if (document.pointerLockElement) document.exitPointerLock()
-      }
-
-      // G键: 切换游戏模式 (创造/生存)
       if (key === 'KeyG') {
         this.toggleGameMode()
       }
 
-      // R键: 切换控制模式 (PC / 手机)
       if (key === 'KeyR') {
-        const pStore2 = usePlayerStore()
-        pStore2.toggleControlMode()
-        const modeLabel = pStore2.controlMode === 'mobile' ? '📱 手机模式' : '🖥 PC模式'
-        pStore2.breakToolName = modeLabel
-        setTimeout(() => { pStore2.breakToolName = null }, 2000)
+        pStore.toggleControlMode()
+        const modeLabel = pStore.controlMode === 'mobile' ? '📱 手机模式' : '🖥 PC模式'
+        pStore.breakToolName = modeLabel
+        setTimeout(() => { pStore.breakToolName = null }, 2000)
       }
 
-      // Y键: 循环切换天气 (晴 → 雨 → 雪 → 雷暴)
       if (key === 'KeyY') {
         if (this.gameMode === 'creative') {
           this.cycleWeather()
         } else {
-          const pStore = usePlayerStore()
           pStore.breakToolName = '需要创造模式'
           setTimeout(() => { pStore.breakToolName = null }, 2000)
         }
       }
 
-      // F键: 切换作弊开关 - 替代F4避免浏览器开发者工具
       if (key === 'KeyF') {
-        const pStore = usePlayerStore()
         pStore.toggleCheats()
         const status = pStore.cheatsEnabled ? '开启' : '关闭'
         pStore.breakToolName = `作弊: ${status}`
         setTimeout(() => { pStore.breakToolName = null }, 2000)
       }
 
-      // Space: double-tap to toggle flying (creative mode)
       if (key === 'Space') {
         if (this.gameMode === 'creative') {
           const now = performance.now()
@@ -660,17 +778,15 @@ export class Engine {
             this.isFlying = !this.isFlying
             if (this.isFlying) this.playerVelocity.y = 0
             this.eventBus.emit('game:flyingChanged', this.isFlying)
-            const pStore = usePlayerStore()
             pStore.isFlying = this.isFlying
           }
           this.lastSpaceTap = now
         }
       }
+    }
 
-      if (key >= 'Digit1' && key <= 'Digit9') {
-        const slot = parseInt(key.replace('Digit', '')) - 1
-        this.eventBus.emit('hotbar:select', slot)
-      }
+    this.inputManager.onKeyUp = (key: string) => {
+      if (key === 'F3') this.f3Held = false
     }
 
     this.inputManager.onMouseMove = (dx: number, dy: number) => {
@@ -714,12 +830,16 @@ export class Engine {
           return
         }
         if (!forcePlace && !this.openTargetContainer()) {
-          if (!this.eatFood()) {
-            // 传送门激活（打火石/末影之眼 → 尝试激活传送门）
-            if (!forcePlace && this.tryActivatePortalOnTarget()) {
-              return
+          if (!this.equipArmor()) {
+            if (!this.drinkPotion()) {
+              if (!this.eatFood()) {
+                // 传送门激活（打火石/末影之眼 → 尝试激活传送门）
+                if (!forcePlace && this.tryActivatePortalOnTarget()) {
+                  return
+                }
+                this.placeBlock()
+              }
             }
-            this.placeBlock()
           }
         } else {
           this.placeBlock()
@@ -731,6 +851,10 @@ export class Engine {
       if (button === 0) {
         this.isBreaking = false
         this.stopBreaking()
+        // 即时清除 HUD 挖掘进度
+        const pStore = usePlayerStore()
+        pStore.breakProgress = 0
+        pStore.breakToolName = null
       }
     }
 
@@ -754,6 +878,20 @@ export class Engine {
         const inv = useInventoryStore()
         inv.addToHotbar(getItemDisplayBlock(itemId), itemId, 1)
       }
+
+      // 方块破坏音效
+      this.gameAudio.playBlockBreak(this.getBlockSoundType(data.blockType))
+      // 饥饿消耗
+      exhaustMine()
+      // 矿物经验掉落 (MC 1:1)
+      const xpDrops: Record<number, number> = {
+        [BlockType.COAL_ORE]: 0.5, [BlockType.IRON_ORE]: 0, [BlockType.GOLD_ORE]: 0,
+        [BlockType.DIAMOND_ORE]: 3.5, [BlockType.EMERALD_ORE]: 3.5,
+        [BlockType.LAPIS_ORE]: 2, [BlockType.REDSTONE_ORE]: 2,
+        [BlockType.NETHER_QUARTZ_ORE]: 2.5,
+      }
+      const xp = xpDrops[data.blockType]
+      if (xp) addExperience(xp)
     })
   }
 
@@ -774,15 +912,21 @@ export class Engine {
 
   /** 循环切换天气 */
   private cycleWeather(): void {
-    const order: WeatherType[] = ['clear', 'rain', 'snow', 'thunder']
-    const current = this.weatherSystem.target
-    const idx = order.indexOf(current)
-    const next = order[(idx + 1) % order.length]
+    // 随机天气，不按顺序循环
+    const types: WeatherType[] = ['clear', 'rain', 'drizzle', 'snow', 'blizzard', 'thunder', 'sandstorm', 'foggy']
+    let next: WeatherType
+    do {
+      next = types[Math.floor(Math.random() * types.length)]
+    } while (next === this.weatherSystem.target && types.length > 1)
     this.weatherSystem.request(next)
     const pStore = usePlayerStore()
     pStore.weather = next
-    const names: Record<WeatherType, string> = { clear: '☀ 晴天', rain: '🌧 雨天', snow: '❄ 雪天', thunder: '⛈ 雷暴' }
-    pStore.breakToolName = names[next]
+    const names: Record<string, string> = {
+      clear: '☀ 晴天', rain: '🌧 雨天', drizzle: '🌦 毛毛雨',
+      snow: '❄ 雪天', blizzard: '🌨 暴风雪', thunder: '⛈ 雷暴',
+      sandstorm: '🏜 沙尘暴', foggy: '🌫 浓雾',
+    }
+    pStore.breakToolName = names[next] ?? next
     setTimeout(() => { pStore.breakToolName = null }, 2000)
   }
 
@@ -795,7 +939,7 @@ export class Engine {
   private startBreaking(): void {
     if (this.breakInterval) return
     const isCreative = this.gameMode === 'creative'
-    const interval = isCreative ? 10 : 50
+    const interval = isCreative ? 20 : 50
 
     this.breakInterval = window.setInterval(() => {
       if (!this.isBreaking) {
@@ -814,7 +958,8 @@ export class Engine {
           return
         }
       }
-      const result = this.blockInteraction.breakHit(isCreative)
+      // 创造模式快速但不瞬间破坏（isCreative 参数传给 breakHit 用于加成）
+      const result = this.blockInteraction.breakHit(false, isCreative)
 
       // Update player store for HUD display
       const pStore = usePlayerStore()
@@ -836,17 +981,38 @@ export class Engine {
     if (this.breakInterval) { clearInterval(this.breakInterval); this.breakInterval = null }
   }
 
-  /** 食物恢复量映射 */
-  private static readonly FOOD_VALUES: Record<string, number> = {
-    apple: 4, golden_apple: 4, enchanted_golden_apple: 4,
-    bread: 5, cooked_beef: 8, cooked_porkchop: 8, cooked_chicken: 6,
-    cooked_mutton: 6, cooked_cod: 5, cooked_salmon: 6,
-    carrot: 3, golden_carrot: 4, potato: 1, baked_potato: 5,
-    melon_slice: 2, cookie: 2, pumpkin_pie: 8,
-    mushroom_stew: 6, beetroot: 1, beetroot_soup: 6,
-    rabbit_stew: 10, dried_kelp: 1, sweet_berries: 2,
-    raw_beef: 3, raw_porkchop: 3, raw_chicken: 2,
-    raw_mutton: 2, raw_cod: 2, raw_salmon: 2,
+  /** 右键穿盔甲，返回是否成功 */
+  private equipArmor(): boolean {
+    if (this.gameMode !== 'survival') return false
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    if (!slot?.item) return false
+    if (inv.equipArmor(slot.item)) {
+      slot.count--
+      if (slot.count <= 0) {
+        slot.item = null
+        slot.blockType = undefined
+      }
+      return true
+    }
+    return false
+  }
+
+  /** 右键喝药水，返回是否成功 */
+  private drinkPotion(): boolean {
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    if (!slot?.item) return false
+    const isSplash = slot.item.startsWith('splash_')
+    if (BrewingSystem.drinkPotion(slot.item, isSplash)) {
+      if (isSplash) {
+        // 喷溅药水：对自己使用后再显示效果
+      }
+      slot.count--
+      if (slot.count <= 0) { slot.item = null; slot.count = 0 }
+      return true
+    }
+    return false
   }
 
   /** 右键吃食物，返回是否成功 */
@@ -855,22 +1021,12 @@ export class Engine {
     const inv = useInventoryStore()
     const slot = inv.hotbar[inv.selectedSlot]
     if (!slot?.item) return false
-
-    const healAmount = Engine.FOOD_VALUES[slot.item]
-    if (!healAmount) return false
-
-    const pStore = usePlayerStore()
-    if (pStore.health >= pStore.maxHealth) return false // 满血不能吃
-
-    // 消耗食物
-    pStore.health = Math.min(pStore.maxHealth, pStore.health + healAmount)
-    slot.count--
-    if (slot.count <= 0) {
-      slot.item = null
-      slot.count = 0
+    if (tryEatFood(slot.item)) {
+      slot.count--
+      if (slot.count <= 0) { slot.item = null; slot.count = 0 }
+      return true
     }
-    this.eventBus.emit('player:heal', { amount: healAmount, source: slot.item ?? 'food' })
-    return true
+    return false
   }
 
   /** 左键攻击实体（动物/僵尸等），返回是否命中 */
@@ -973,7 +1129,10 @@ export class Engine {
       minZ: this.playerPosition.z - halfWidth, maxZ: this.playerPosition.z + halfWidth,
     }
     const placed = this.blockInteraction.placeBlock(selectedSlot.blockType, playerAABB)
-    if (placed) inv.removeFromSelected()
+    if (placed) {
+      this.gameAudio.playBlockPlace(this.getBlockSoundType(selectedSlot.blockType))
+      inv.removeFromSelected()
+    }
   }
 
   // ==================== 调试棒交互 ====================
@@ -1012,6 +1171,33 @@ export class Engine {
 
     const { position, blockType } = target
     const pStore = usePlayerStore()
+
+    // 拉杆: 右键切换开关
+    if (blockType === BlockType.LEVER || blockType === BlockType.LEVER_ON) {
+      const isOn = blockType === BlockType.LEVER_ON
+      this.chunkManager.setBlock(position.x, position.y, position.z, isOn ? BlockType.LEVER : BlockType.LEVER_ON)
+      pStore.breakToolName = isOn ? '拉杆: 关闭' : '拉杆: 开启'
+      setTimeout(() => { pStore.breakToolName = null }, 1500)
+      return true
+    }
+
+    // 工作台: 打开3×3合成
+    if (blockType === BlockType.CRAFTING_TABLE) {
+      const ui = useUIStore()
+      ui.showCrafting = true
+      useInventoryStore().showInventory = true
+      return true
+    }
+
+    // 铁砧: 标记为铁砧交互
+    if (blockType === BlockType.ANVIL) {
+      const ui = useUIStore()
+      ui.showAnvil = true
+      ui.anvilX = position.x
+      ui.anvilY = position.y
+      ui.anvilZ = position.z
+      return true
+    }
 
     // 光源方块: 右键切换开关
     if (blockType === BlockType.LIGHT_BLOCK) {
@@ -1115,6 +1301,8 @@ export class Engine {
     this.lastDamageTime = performance.now() / 1000
     this.healthRegenTimer = 0
     this.eventBus.emit('player:damage', { amount: actualDamage, source, armorReduced: baseDamage - actualDamage })
+    this.gameAudio.playHurt()
+    exhaustDamage(actualDamage)
   }
 
   private update(dt: number): void {
@@ -1145,23 +1333,23 @@ export class Engine {
     // === Flying movement (creative mode) ===
     if (this.isFlying) {
       const flySpeed = movement.sprint ? this.flySpeed * 2 : this.flySpeed
-      const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
-      const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
+      Engine._movFwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+      Engine._movRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
 
-      const moveDir = new THREE.Vector3(0, 0, 0)
-      if (movement.forward) moveDir.add(forward)
-      if (movement.backward) moveDir.sub(forward)
-      if (movement.left) moveDir.sub(right)
-      if (movement.right) moveDir.add(right)
+      Engine._movDir.set(0, 0, 0)
+      if (movement.forward) Engine._movDir.add(Engine._movFwd)
+      if (movement.backward) Engine._movDir.sub(Engine._movFwd)
+      if (movement.left) Engine._movDir.sub(Engine._movRight)
+      if (movement.right) Engine._movDir.add(Engine._movRight)
 
-      // Vertical: space = up, shift = down
-      if (movement.jump) moveDir.y += 1
-      if (this.inputManager.isKeyPressed('ShiftLeft') || this.inputManager.isKeyPressed('ShiftRight')) moveDir.y -= 1
+      // Vertical: space = up, sneak = down
+      if (movement.jump) Engine._movDir.y += 1
+      if (movement.sneak) Engine._movDir.y -= 1
 
-      if (moveDir.lengthSq() > 0) moveDir.normalize().multiplyScalar(flySpeed)
+      if (Engine._movDir.lengthSq() > 0) Engine._movDir.normalize().multiplyScalar(flySpeed)
 
-      this.playerVelocity.set(moveDir.x, moveDir.y, moveDir.z)
-      this.playerPosition.add(this.playerVelocity.clone().multiplyScalar(dt))
+      this.playerVelocity.set(Engine._movDir.x, Engine._movDir.y, Engine._movDir.z)
+      this.playerPosition.add(Engine._movDir.multiplyScalar(dt))
 
       // Reset fall tracking while flying
       this.fallStartY = this.playerPosition.y
@@ -1170,23 +1358,23 @@ export class Engine {
     // === Underwater swimming ===
     else if (isSwimming) {
       const swimSpeed = PLAYER_SPEED * 0.5
-      const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
-      const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
+      Engine._movFwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+      Engine._movRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
 
-      const moveDir = new THREE.Vector3(0, 0, 0)
-      if (movement.forward) moveDir.add(forward)
-      if (movement.backward) moveDir.sub(forward)
-      if (movement.left) moveDir.sub(right)
-      if (movement.right) moveDir.add(right)
-      if (moveDir.lengthSq() > 0) moveDir.normalize().multiplyScalar(swimSpeed)
+      Engine._movDir.set(0, 0, 0)
+      if (movement.forward) Engine._movDir.add(Engine._movFwd)
+      if (movement.backward) Engine._movDir.sub(Engine._movFwd)
+      if (movement.left) Engine._movDir.sub(Engine._movRight)
+      if (movement.right) Engine._movDir.add(Engine._movRight)
+      if (Engine._movDir.lengthSq() > 0) Engine._movDir.normalize().multiplyScalar(swimSpeed)
 
-      this.playerVelocity.x = moveDir.x
-      this.playerVelocity.z = moveDir.z
+      this.playerVelocity.x = Engine._movDir.x
+      this.playerVelocity.z = Engine._movDir.z
 
       // Swim up/down
       if (movement.jump) {
         this.playerVelocity.y = 4.5
-      } else if (this.inputManager.isKeyPressed('ShiftLeft')) {
+      } else if (movement.sneak) {
         this.playerVelocity.y = -3 // Sink
       } else {
         // Water drag
@@ -1202,8 +1390,8 @@ export class Engine {
       const swimStart = this.playerPosition.clone()
       const result = this.physicsEngine.update(this.playerPosition, this.playerVelocity, dt, false, 0)
 
-      if (movement.jump && moveDir.lengthSq() > 0) {
-        const stepped = this.physicsEngine.trySwimStepUp(swimStart, moveDir, dt)
+      if (movement.jump && Engine._movDir.lengthSq() > 0) {
+        const stepped = this.physicsEngine.trySwimStepUp(swimStart, Engine._movDir, dt)
         if (stepped) {
           result.position.copy(stepped)
           result.velocity.y = Math.max(result.velocity.y, 2.5)
@@ -1218,24 +1406,26 @@ export class Engine {
     }
     // === Normal movement ===
     else {
-      const speed = movement.sprint ? PLAYER_SPRINT_SPEED : PLAYER_SPEED
-      const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
-      const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
+      const speedMult = potionEffects.getSpeedMultiplier()
+      const speed = (movement.sprint ? PLAYER_SPRINT_SPEED : PLAYER_SPEED) * speedMult
+      Engine._movFwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+      Engine._movRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
 
-      const moveDir = new THREE.Vector3(0, 0, 0)
-      if (movement.forward) moveDir.add(forward)
-      if (movement.backward) moveDir.sub(forward)
-      if (movement.left) moveDir.sub(right)
-      if (movement.right) moveDir.add(right)
-      if (moveDir.lengthSq() > 0) moveDir.normalize().multiplyScalar(speed)
+      Engine._movDir.set(0, 0, 0)
+      if (movement.forward) Engine._movDir.add(Engine._movFwd)
+      if (movement.backward) Engine._movDir.sub(Engine._movFwd)
+      if (movement.left) Engine._movDir.sub(Engine._movRight)
+      if (movement.right) Engine._movDir.add(Engine._movRight)
+      if (Engine._movDir.lengthSq() > 0) Engine._movDir.normalize().multiplyScalar(speed)
 
-      this.playerVelocity.x = moveDir.x
-      this.playerVelocity.z = moveDir.z
+      this.playerVelocity.x = Engine._movDir.x
+      this.playerVelocity.z = Engine._movDir.z
 
       // Jump
       if (movement.jump && this.playerOnGround) {
-        this.playerVelocity.y = JUMP_VELOCITY
+        this.playerVelocity.y = JUMP_VELOCITY * potionEffects.getJumpMultiplier()
         this.playerOnGround = false
+        exhaustJump()
       }
 
       // Track falling for fall damage
@@ -1283,6 +1473,27 @@ export class Engine {
         this.fallStartY = this.playerPosition.y
       }
       this.playerOnGround = result.onGround
+    }
+
+    // === 步声音效 ===
+    const isMoving = movement.forward || movement.backward || movement.left || movement.right
+    if (this.playerOnGround && isMoving && !this.isFlying) {
+      const speed = movement.sprint ? PLAYER_SPRINT_SPEED : PLAYER_SPEED
+      this.footstepAccum += speed * dt
+      if (this.footstepAccum > 1.8) { // 每 ~1.8m 一步
+        this.footstepAccum = 0
+        const px = Math.floor(this.playerPosition.x)
+        const pz = Math.floor(this.playerPosition.z)
+        const below = this.chunkManager.getBlock(px, Math.floor(this.playerPosition.y - 0.1), pz)
+        let surface: 'grass' | 'stone' | 'wood' | 'sand' | 'water' = 'stone'
+        if (below === BlockType.GRASS_BLOCK || below === BlockType.DIRT) surface = 'grass'
+        else if (below === BlockType.SAND || below === BlockType.GRAVEL || below === BlockType.SOUL_SAND) surface = 'sand'
+        else if (below >= 7 && below <= 10 || below >= 93 && below <= 107) surface = 'wood'
+        else if (below === BlockType.WATER) surface = 'water'
+        this.gameAudio.playFootstep(surface)
+      }
+    } else {
+      this.footstepAccum = 0
     }
 
     // === Oxygen system ===
@@ -1381,9 +1592,43 @@ export class Engine {
     // Weather audio
     const wCurr = this.weatherSystem.current
     const wInt = this.weatherSystem.intensity
-    this.weatherAudio.setRain(wCurr === 'rain' || wCurr === 'thunder' ? wInt * 0.7 : 0)
-    this.weatherAudio.setWind(wCurr === 'thunder' ? wInt * 0.8 : wCurr === 'snow' ? wInt * 0.25 : wCurr === 'rain' ? wInt * 0.3 : 0)
+    // 天气音效
+    const rainTypes = new Set(['rain', 'thunder', 'drizzle'])
+    const windTypes = new Set(['thunder', 'rain', 'snow', 'blizzard', 'sandstorm', 'drizzle', 'foggy'])
+    const isRain = rainTypes.has(wCurr)
+    const isWind = windTypes.has(wCurr)
+
+    // 雨声：大雨/雷暴=70%, 毛毛雨=25%
+    const rainVol = wCurr === 'drizzle' ? wInt * 0.25 : (wCurr === 'thunder' || wCurr === 'rain' ? wInt * 0.7 : 0)
+    this.weatherAudio.setRain(rainVol)
+
+    // 风声：雷暴=80%, 暴风雪=75%, 沙尘暴=70%, 雨=30%, 雪=25%, 毛毛雨=15%, 浓雾=10%
+    const windVol = wCurr === 'thunder' ? wInt * 0.8
+      : wCurr === 'blizzard' ? wInt * 0.75
+      : wCurr === 'sandstorm' ? wInt * 0.7
+      : wCurr === 'rain' ? wInt * 0.3
+      : wCurr === 'snow' ? wInt * 0.25
+      : wCurr === 'drizzle' ? wInt * 0.15
+      : wCurr === 'foggy' ? wInt * 0.1
+      : 0
+    this.weatherAudio.setWind(windVol)
     this.weatherAudio.update(dt)
+
+    // 药水效果更新
+    potionEffects.update(dt)
+
+    // 饥饿系统更新 (生存模式)
+    if (this.gameMode === 'survival' && !this.isDead) {
+      const isMoving = movement.forward || movement.backward || movement.left || movement.right
+      const pStore = usePlayerStore()
+      const result = updateHunger(dt, isMoving, movement.sprint, pStore.health, pStore.maxHealth)
+      if (result.tookDamage) {
+        this.applyDamage(1, 'starve')
+      }
+      if (result.newHealth !== pStore.health) {
+        pStore.health = result.newHealth
+      }
+    }
 
     // Sync player model for third-person view
     this.playerEntity.position.copy(this.playerPosition)
@@ -1419,19 +1664,32 @@ export class Engine {
       this.chunkManager.markAllDirty()
     }
 
-    // Chunks
-    const chunkX = Math.floor(this.playerPosition.x / 16)
-    const chunkZ = Math.floor(this.playerPosition.z / 16)
+    // Chunks — 传送期间跳过；未跨区块时仅重建脏网格
+    if (!this.isTeleporting) {
+      const chunkX = Math.floor(this.playerPosition.x / 16)
+      const chunkZ = Math.floor(this.playerPosition.z / 16)
+      if (chunkX !== this.lastChunkX || chunkZ !== this.lastChunkZ) {
+        this.lastChunkX = chunkX
+        this.lastChunkZ = chunkZ
+        this.chunkManager.updateChunks(chunkX, chunkZ)
+      } else {
+        this.chunkManager.rebuildDirtyOnly()
+      }
+    }
     this.chunkManager.updateFluids(dt)
     this.redstoneSystem.update(dt)
-    // 每帧都更新区块加载（区块加载有内部节流；不调用会导致脏网格不重建+加载停滞）
-    this.chunkManager.updateChunks(chunkX, chunkZ)
     this.frameCount++
 
     // === 传送门检测 ===
-    const portalResult = this.portalSystem.update(this.playerPosition, dt)
-    if (portalResult?.shouldTeleport) {
-      this.teleportToDimension(portalResult.targetDimension)
+    if (!this.isTeleporting) {
+      const portalResult = this.portalSystem.update(this.playerPosition, dt)
+      if (portalResult?.shouldTeleport) {
+        this.isTeleporting = true
+        this.gameAudio.playTeleport()
+        this.teleportToDimension(portalResult.targetDimension).finally(() => {
+          this.isTeleporting = false
+        })
+      }
     }
 
     // 更新传送门进度到 HUD
@@ -1472,7 +1730,111 @@ export class Engine {
 
   private render(_dt: number): void {
     this.chunkManager.updateAnimation(performance.now() * 0.001)
+
+    // === 区块边界渲染 (F3+G) ===
+    const ui = useUIStore()
+    if (ui.showChunkBorders) {
+      this.updateChunkBorderGrid()
+    } else if (this.chunkBorderGrid) {
+      this.scene.remove(this.chunkBorderGrid)
+      this.chunkBorderGrid.geometry.dispose()
+      this.chunkBorderGrid = null
+    }
+
+    // === 实体碰撞箱渲染 (F3+B) ===
+    if (ui.showHitboxes) {
+      this.updateEntityHitboxes()
+    } else {
+      for (const [, mesh] of this.entityHitboxes) {
+        this.scene.remove(mesh)
+        mesh.geometry.dispose()
+      }
+      this.entityHitboxes.clear()
+    }
+
     this.renderer.render(this.scene, this.cameraManager.activeCamera)
+  }
+
+  /** 绘制玩家周围区块边界网格 */
+  private updateChunkBorderGrid(): void {
+    const range = RENDER_DISTANCE + 1
+    const cx = Math.floor(this.playerPosition.x / 16) * 16
+    const cz = Math.floor(this.playerPosition.z / 16) * 16
+    const minX = cx - range * 16
+    const maxX = cx + range * 16
+    const minZ = cz - range * 16
+    const maxZ = cz + range * 16
+    const Y = Math.floor(this.playerPosition.y) - 1
+
+    const vertices: number[] = []
+    for (let x = minX; x <= maxX; x += 16) {
+      vertices.push(x, Y, minZ, x, Y, maxZ)
+    }
+    for (let z = minZ; z <= maxZ; z += 16) {
+      vertices.push(minX, Y, z, maxX, Y, z)
+    }
+    // 垂直线（区块四角）
+    for (let x = minX; x <= maxX; x += 16) {
+      for (let z = minZ; z <= maxZ; z += 16) {
+        vertices.push(x, Y, z, x, Y + 16, z)
+      }
+    }
+
+    if (this.chunkBorderGrid) {
+      this.scene.remove(this.chunkBorderGrid)
+      this.chunkBorderGrid.geometry.dispose()
+      this.chunkBorderGrid = null
+    }
+
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.6, depthTest: true })
+    this.chunkBorderGrid = new THREE.LineSegments(geo, mat)
+    this.chunkBorderGrid.renderOrder = 999
+    this.scene.add(this.chunkBorderGrid)
+  }
+
+  /** 绘制实体碰撞箱 */
+  private updateEntityHitboxes(): void {
+    const entities = this.entityManager.getAllEntities()
+    const seenIds = new Set<string>()
+
+    for (const entity of entities) {
+      if (!entity.isAlive) continue
+      seenIds.add(entity.id)
+
+      if (this.entityHitboxes.has(entity.id)) continue
+
+      // 创建白色线框碰撞箱
+      const w = entity.mesh?.userData?.width ?? 0.6
+      const h = entity.mesh?.userData?.height ?? 1.8
+      const boxGeo = new THREE.BoxGeometry(w, h, w)
+      const edgesGeo = new THREE.EdgesGeometry(boxGeo)
+      const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthTest: true })
+      const hitbox = new THREE.LineSegments(edgesGeo, mat)
+      hitbox.renderOrder = 998
+      hitbox.position.copy(entity.position)
+      hitbox.position.y += h / 2
+      this.scene.add(hitbox)
+      this.entityHitboxes.set(entity.id, hitbox)
+      boxGeo.dispose() // EdgesGeometry copies the data
+    }
+
+    // 更新位置 & 清理已消失的实体
+    for (const [id, hitbox] of this.entityHitboxes) {
+      if (!seenIds.has(id)) {
+        this.scene.remove(hitbox)
+        hitbox.geometry.dispose()
+        this.entityHitboxes.delete(id)
+      } else {
+        const entity = entities.find(e => e.id === id)
+        if (entity) {
+          hitbox.position.copy(entity.position)
+          const h = entity.mesh?.userData?.height ?? 1.8
+          hitbox.position.y += h / 2
+        }
+      }
+    }
   }
 
   private updateDayNight(dt: number): void {
@@ -1483,15 +1845,23 @@ export class Engine {
     this.daylight = THREE.MathUtils.smoothstep(Engine._sunDir.y, -0.18, 0.12)
 
     const w = this.weatherSystem.intensity
-    const isRain = this.weatherSystem.current === 'rain'
-    const isSnow = this.weatherSystem.current === 'snow'
-    const isThunder = this.weatherSystem.current === 'thunder'
+    const wType = this.weatherSystem.current
+    const isRain = wType === 'rain'
+    const isDrizzle = wType === 'drizzle'
+    const isSnow = wType === 'snow' || wType === 'blizzard'
+    const isThunder = wType === 'thunder'
+    const isSandstorm = wType === 'sandstorm'
+    const isFoggy = wType === 'foggy'
+    const isBlizzard = wType === 'blizzard'
 
     // Weather-blended sky colour
-    let weatherSky = Engine._daySky
+    let weatherSky: THREE.Color
     if (isThunder) weatherSky = Engine._thunderSky
-    else if (isRain) weatherSky = Engine._rainSky
+    else if (isRain || isDrizzle) weatherSky = Engine._rainSky
     else if (isSnow) weatherSky = Engine._snowSky
+    else if (isSandstorm) weatherSky = Engine._sandSky
+    else if (isFoggy) weatherSky = Engine._fogSky
+    else weatherSky = Engine._daySky
 
     // 复用缓存的 Color 对象进行 lerp，避免 clone() 分配
     const baseSkyColor = Engine._tmpColor1.copy(Engine._nightSky).lerp(Engine._daySky, this.daylight)
@@ -1499,7 +1869,9 @@ export class Engine {
     const skyColor = Engine._tmpColor3.copy(baseSkyColor).lerp(weatherSkyColor, w)
 
     // Ambient: weather reduces daylight reach
-    const weatherAmbientScale = 1.0 - w * (isThunder ? 0.7 : isRain ? 0.4 : isSnow ? 0.15 : 0)
+    const weatherAmbientScale = 1.0 - w * (
+      isThunder ? 0.7 : isBlizzard ? 0.5 : isRain ? 0.4 :
+      isDrizzle ? 0.2 : isSnow ? 0.15 : isSandstorm ? 0.35 : isFoggy ? 0.1 : 0)
     let ambient = 0.08 + this.daylight * 0.47
     ambient *= weatherAmbientScale
     if (isSnow) ambient += w * 0.12
@@ -1508,7 +1880,7 @@ export class Engine {
     const flash = this.weatherSystem.getThunderFlash()
     const flashBoost = flash > 0.01 ? flash * 0.6 : 0
 
-    const weatherTypeCode = isThunder ? 3 : isRain ? 1 : isSnow ? 2 : 0
+    const weatherTypeCode = isThunder || isSandstorm ? 3 : (isRain || isDrizzle) ? 1 : isSnow ? 2 : isFoggy ? 1 : 0
     this.sky.updateCycle(this.daylight + flashBoost, Engine._sunDir, w, weatherTypeCode)
     this.ambientLight.intensity = ambient + flashBoost
     this.ambientLight.color.set(isSnow ? 0xe8eeff : 0xffffff)
@@ -1517,11 +1889,14 @@ export class Engine {
     this.sunLight.position.copy(this.playerPosition).addScaledVector(Engine._sunDir, 120)
     this.sunLight.target.position.copy(this.playerPosition)
     this.chunkMesher.updateEnvironment(Engine._sunDir, ambient, skyColor)
+    this.chunkMesher.updateCamera(this.cameraManager.activeCamera.position)
 
     // Fog: weather reduces visibility
     const fogBaseNear = 32 + this.daylight * 48
     const fogBaseFar  = 80 + this.daylight * 96
-    const fogReduce = 1.0 - w * (isThunder ? 0.6 : isRain ? 0.45 : isSnow ? 0.35 : 0)
+    const fogReduce = 1.0 - w * (
+      isThunder ? 0.65 : isBlizzard ? 0.6 : isRain ? 0.45 :
+      isDrizzle ? 0.25 : isSnow ? 0.35 : isSandstorm ? 0.55 : isFoggy ? 0.7 : 0)
     const fogNear = fogBaseNear * fogReduce
     const fogFar  = Math.max(fogNear + 8, fogBaseFar * fogReduce)
     const fogColor = Engine._tmpColor4.copy(baseSkyColor).lerp(weatherSkyColor, w * 0.8)
@@ -1543,8 +1918,8 @@ export class Engine {
     // Auto weather cycling
     this.weatherTimer -= dt
     if (this.weatherTimer <= 0) {
-      this.weatherTimer = 120 + Math.random() * 180 // 2-5 min
-      const types: WeatherType[] = ['clear', 'clear', 'rain', 'snow', 'clear', 'rain', 'thunder']
+      this.weatherTimer = 60 + Math.random() * 240 // 1-5 min 随机间隔
+      const types: WeatherType[] = ['clear', 'rain', 'drizzle', 'snow', 'blizzard', 'thunder', 'sandstorm', 'foggy', 'clear', 'clear']
       const next = types[Math.floor(Math.random() * types.length)]
       if (next !== this.weatherSystem.target) {
         this.weatherSystem.request(next)
@@ -1864,16 +2239,13 @@ export class Engine {
 
   /**
    * 传送玩家到指定维度
-   * 生成一个适合该维度的传送平台，并改变天空颜色
+   * 卸载当前维度区块，加载目标维度区块，生成安全平台，改变天空颜色
    */
   private async teleportToDimension(targetDimension: Dimension): Promise<void> {
     const prevDimension = this.portalSystem.currentDimension
 
-    // 保存当前位置
+    // 保存当前维度位置
     this.portalSystem.savePosition(prevDimension, this.playerPosition)
-
-    // 切换维度
-    this.portalSystem.currentDimension = targetDimension
 
     // 计算目标位置
     let targetPos: THREE.Vector3
@@ -1881,23 +2253,35 @@ export class Engine {
     if (saved) {
       targetPos = saved.clone()
     } else {
-      // 首次进入某维度：使用偏移位置生成平台
-      const offset = targetDimension === 'nether' ? 5000 : targetDimension === 'end' ? -5000 : 0
-      targetPos = new THREE.Vector3(offset + 8, 80, 8)
+      // 首次进入某维度：选择有建筑的出生点（走廊中间，避免卡墙）
+      if (targetDimension === 'nether') {
+        // 出生在下界堡垒走廊交汇处（chunk 307,7 内部 x=9,z=9）
+        targetPos = new THREE.Vector3(4921, 80, 121)
+      } else if (targetDimension === 'end') {
+        targetPos = new THREE.Vector3(-4992, 80, 8)
+      } else {
+        targetPos = new THREE.Vector3(8, 80, 8)
+      }
     }
 
-    // 确保目标区域区块已加载
-    const cx = Math.floor(targetPos.x / 16)
-    const cz = Math.floor(targetPos.z / 16)
-    await this.chunkManager.updateChunks(cx, cz)
+    // ★ 关键：切换到目标维度（卸载旧区块网格，切换生成器维度，加载新区块）
+    await this.chunkManager.switchDimension(targetDimension, targetPos.x, targetPos.z)
+
+    // 同步 portalSystem 的维度状态
+    this.portalSystem.currentDimension = targetDimension
 
     // 在目标位置生成安全平台（如果还没有地面）
     this.generateDimensionPlatform(Math.floor(targetPos.x), Math.floor(targetPos.z), targetDimension)
 
     // 找到安全 Y 位置
-    const safeY = this.findSafeY(Math.floor(targetPos.x), Math.floor(targetPos.z))
-    if (safeY > 0) {
-      targetPos.y = safeY + 2
+    // 注意：下界有基岩天花板，getHeightAt 会返回天花板高度而非地表
+    // 使用 getSurfaceHeightAt 从合适的高度向下搜索地表
+    const surfaceY = this.chunkManager.getHeightAt(
+      Math.floor(targetPos.x), Math.floor(targetPos.z),
+      targetDimension === 'nether' ? 120 : undefined
+    )
+    if (surfaceY > 0) {
+      targetPos.y = surfaceY + 2
     }
 
     // 传送玩家
@@ -1905,6 +2289,9 @@ export class Engine {
     this.playerVelocity.set(0, 0, 0)
     this.fallStartY = targetPos.y
     this.wasInAir = false
+
+    // ★ 防卡墙：如果出生在固体方块中，向上提升直到安全
+    this.unstuckPlayer()
 
     // 改变天空颜色
     this.updateSkyForDimension(targetDimension)
@@ -1929,9 +2316,10 @@ export class Engine {
       : BlockType.STONE
 
     // 生成 5x5 平台，3 格高
+    const maxSearchY = dimension === 'nether' ? 120 : undefined
     for (let dx = -2; dx <= 2; dx++) {
       for (let dz = -2; dz <= 2; dz++) {
-        const height = this.chunkManager.getHeightAt(cx + dx, cz + dz)
+        const height = this.chunkManager.getHeightAt(cx + dx, cz + dz, maxSearchY)
         // 如果高度太低（虚空），放置平台方块
         if (height < 5) {
           for (let dy = 0; dy < 3; dy++) {
@@ -1940,6 +2328,44 @@ export class Engine {
         }
       }
     }
+  }
+
+  /**
+   * 防卡墙：如果玩家出生在固体方块中，向上提升到安全位置
+   */
+  private unstuckPlayer(): void {
+    const px = Math.floor(this.playerPosition.x)
+    const py = Math.floor(this.playerPosition.y)
+    const pz = Math.floor(this.playerPosition.z)
+
+    // 检测脚部和头部是否在固体方块中
+    const isSolid = (bx: number, by: number, bz: number): boolean => {
+      const block = this.chunkManager.getBlock(bx, by, bz)
+      return block !== BlockType.AIR && block !== BlockType.WATER &&
+             block !== BlockType.NETHER_PORTAL && block !== BlockType.END_PORTAL
+    }
+
+    let attempts = 0
+    if (isSolid(px, py, pz) || isSolid(px, py + 1, pz)) {
+      // 先向下找（可能只是头顶卡住）
+      let testY = py
+      while (testY > 0 && (isSolid(px, testY, pz) || isSolid(px, testY + 1, pz))) {
+        testY--
+      }
+      if (testY > 0) {
+        this.playerPosition.y = testY + 0.1
+      } else {
+        // 向下找不到空位，向上找
+        testY = py
+        while (testY < 250 && (isSolid(px, testY, pz) || isSolid(px, testY + 1, pz))) {
+          testY++
+          attempts++
+          if (attempts > 60) break // 防止死循环
+        }
+        this.playerPosition.y = testY + 0.1
+      }
+    }
+    this.fallStartY = this.playerPosition.y
   }
 
   /**
@@ -1973,20 +2399,14 @@ export class Engine {
     const inv = useInventoryStore()
     const slot = inv.hotbar[inv.selectedSlot]
 
-    // 打火石 → 激活地狱传送门
+    // 打火石 → 激活地狱传送门（新算法直接在黑曜石上工作）
     if (slot?.item === 'flint_and_steel') {
       if (this.portalSystem.tryActivateNetherPortal(tx, ty, tz)) {
-        // 消耗耐久
-        if (slot.durabilityDamage === undefined) slot.durabilityDamage = 0
-        slot.durabilityDamage++
-        const itemDef = getItemDefinition(slot.item)
-        if (itemDef?.durability && slot.durabilityDamage >= itemDef.durability) {
-          slot.item = null
-          slot.count = 0
-          slot.durabilityDamage = 0
-        }
+        this.consumeFlintAndSteel(slot)
+        this.gameAudio.playPortalActivate()
         return true
       }
+      return false
     }
 
     // 末影之眼 → 激活末地传送门框架
@@ -2004,6 +2424,18 @@ export class Engine {
     return false
   }
 
+  /** 消耗打火石耐久 */
+  private consumeFlintAndSteel(slot: { item: string | null; count: number; durabilityDamage?: number }): void {
+    if (slot.durabilityDamage === undefined) slot.durabilityDamage = 0
+    slot.durabilityDamage++
+    const itemDef = getItemDefinition(slot.item!)
+    if (itemDef?.durability && slot.durabilityDamage >= itemDef.durability) {
+      slot.item = null
+      slot.count = 0
+      slot.durabilityDamage = 0
+    }
+  }
+
   /**
    * 通过方块交互目标尝试激活传送门
    */
@@ -2012,24 +2444,51 @@ export class Engine {
     const slot = inv.hotbar[inv.selectedSlot]
     if (!slot?.item) return false
 
-    // 只有打火石和末影之眼能激活传送门
     if (slot.item !== 'flint_and_steel' && slot.item !== 'ender_eye') return false
 
-    // 获取目标方块
+    // 优先使用方块交互目标
     const target = this.blockInteraction.getTargetBlock()
     if (target) {
-      // 有目标方块：对该方块位置尝试激活
-      return this.tryActivatePortal(target.position.x, target.position.y, target.position.z)
+      if (this.tryActivatePortal(target.position.x, target.position.y, target.position.z)) return true
+      // 打火石额外尝试：目标相邻位置（可能刚好指向框架内部空气）
+      if (slot.item === 'flint_and_steel') {
+        const adjPos = this.blockInteraction.getAdjacentPlacementPos()
+        if (adjPos) {
+          if (this.tryActivatePortal(adjPos.x, adjPos.y, adjPos.z)) return true
+        }
+      }
     }
 
-    // 无目标方块：对射线命中的第一个方块位置尝试激活
+    // 备用：直接射线检测
     const camPos = this.cameraManager.activeCamera.position.clone()
     const camDir = this.cameraManager.getForwardDirection()
     const hit = this.chunkManager.raycast(camPos, camDir, 6)
     if (hit) {
-      return this.tryActivatePortal(hit.position.x, hit.position.y, hit.position.z)
+      if (this.tryActivatePortal(hit.position.x, hit.position.y, hit.position.z)) return true
+      // 打火石：也尝试射线命中面的相邻位置
+      if (slot.item === 'flint_and_steel') {
+        const adjX = hit.position.x + hit.normal.x
+        const adjY = hit.position.y + hit.normal.y
+        const adjZ = hit.position.z + hit.normal.z
+        return this.tryActivatePortal(adjX, adjY, adjZ)
+      }
     }
     return false
+  }
+
+  /** 根据方块类型返回音效分类 */
+  private getBlockSoundType(blockType: number): 'stone' | 'wood' | 'dirt' | 'sand' | 'glass' | 'metal' {
+    // 石头类
+    if (blockType <= 2 || (blockType >= 5 && blockType <= 6) || (blockType >= 85 && blockType <= 92) || blockType === 46 || blockType === 47) return 'stone'
+    // 木头类
+    if ((blockType >= 7 && blockType <= 10) || (blockType >= 93 && blockType <= 107) || blockType === 159 || blockType === 160 || blockType === 168) return 'wood'
+    // 沙子类
+    if (blockType === BlockType.SAND || blockType === BlockType.GRAVEL || blockType === BlockType.SOUL_SAND || blockType === 12) return 'sand'
+    // 玻璃类
+    if (blockType === BlockType.GLASS || blockType === BlockType.GLOWSTONE || blockType === BlockType.ICE || blockType === BlockType.SEA_LANTERN) return 'glass'
+    // 金属类
+    if (blockType >= 70 && blockType <= 73 || blockType === BlockType.IRON_ORE || blockType === BlockType.GOLD_ORE) return 'metal'
+    return 'dirt'
   }
 
   /**
@@ -2062,6 +2521,7 @@ export class Engine {
     this.cloudSystem.dispose()
     this.weatherSystem.dispose()
     this.weatherAudio.dispose()
+    this.gameAudio.dispose()
     this.renderer.dispose()
     this.textureAtlas.dispose()
     this.chunkManager.dispose()

@@ -28,13 +28,18 @@ export class InputManager {
     this.setupListeners()
   }
 
-  attach(canvas: HTMLCanvasElement): void {
+  private isTouchDevice = false
+
+  attach(canvas: HTMLCanvasElement, isTouchDevice = false): void {
     this.canvas = canvas
-    canvas.addEventListener('click', () => {
-      if (!this.isPointerLocked) {
-        canvas.requestPointerLock()
-      }
-    })
+    this.isTouchDevice = isTouchDevice
+    if (!isTouchDevice) {
+      canvas.addEventListener('click', () => {
+        if (!this.isPointerLocked) {
+          canvas.requestPointerLock()
+        }
+      })
+    }
   }
 
   private setupListeners(): void {
@@ -129,15 +134,21 @@ export class InputManager {
     }
   }
 
+  /** Feed touch-look delta into the same pipeline as mouse movement. */
+  setVirtualLook(dx: number, dy: number): void {
+    this.onMouseMove?.(dx, dy)
+  }
+
   /**
    * 获取玩家移动输入（合并键盘和虚拟输入）
    */
-  getMovement(): { forward: boolean; backward: boolean; left: boolean; right: boolean; jump: boolean; sprint: boolean } {
+  getMovement(): { forward: boolean; backward: boolean; left: boolean; right: boolean; jump: boolean; sprint: boolean; sneak: boolean } {
     // Virtual joystick
     const vFwd = this.virtualForward
     const vRgt = this.virtualRight
     const vJump = this.virtualActions.get('jump') ?? false
     const vSneak = this.virtualActions.get('sneak') ?? false
+    const shiftHeld = this.isKeyPressed('ShiftLeft') || this.isKeyPressed('ShiftRight')
 
     return {
       forward: this.isKeyPressed('KeyW') || vFwd > 0.3,
@@ -145,7 +156,8 @@ export class InputManager {
       left: this.isKeyPressed('KeyA') || vRgt < -0.3,
       right: this.isKeyPressed('KeyD') || vRgt > 0.3,
       jump: this.isKeyPressed('Space') || vJump,
-      sprint: this.isKeyPressed('ShiftLeft') || this.isKeyPressed('ShiftRight') || vSneak,
+      sprint: shiftHeld, // PC: Shift = sprint; mobile: no sprint via sneak button
+      sneak: shiftHeld || vSneak, // PC: Shift also acts as sneak; mobile: dedicated sneak button
     }
   }
 }

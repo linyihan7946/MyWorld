@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { WeatherType } from '@/rendering/WeatherSystem'
 
 export const usePlayerStore = defineStore('player', () => {
   const position = ref({ x: 0, y: 0, z: 0 })
@@ -16,7 +17,7 @@ export const usePlayerStore = defineStore('player', () => {
   const isDead = ref(false)
   const deathCount = ref(0)
   const timeOfDay = ref(0.4)
-  const weather = ref<'clear' | 'rain' | 'snow' | 'thunder'>('clear')
+  const weather = ref<WeatherType>('clear')
   const biome = ref('plains')
 
   // === 控制模式 ===
@@ -25,7 +26,7 @@ export const usePlayerStore = defineStore('player', () => {
     controlMode.value = controlMode.value === 'pc' ? 'mobile' : 'pc'
   }
   function autoDetectControlMode() {
-    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+    const hasTouch = window.matchMedia('(pointer: coarse)').matches
     controlMode.value = hasTouch ? 'mobile' : 'pc'
   }
 

@@ -1,7 +1,7 @@
 // Game Constants
 export const CHUNK_SIZE = 16
 export const CHUNK_HEIGHT = 256
-export const RENDER_DISTANCE = 6
+export const RENDER_DISTANCE = 10 // 渲染距离从 6 提升到 10 (约 314 个区块)
 export const BLOCK_SIZE = 1
 
 // Physics

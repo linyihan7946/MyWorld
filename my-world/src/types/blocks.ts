@@ -335,6 +335,8 @@ export enum BlockType {
   OBSERVER = 385,
   HOPPER = 386,
   PISTON_HEAD = 387,
+  LEVER = 388,                  // 拉杆
+  LEVER_ON = 389,               // 激活的拉杆
 
   // === 指令专属方块 (创造模式+作弊) ===
   COMMAND_BLOCK = 400,          // 脉冲命令方块 (橙色)
@@ -710,6 +712,8 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.OBSERVER]: { id: BlockType.OBSERVER, name: '侦测器', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 202 } },
   [BlockType.HOPPER]: { id: BlockType.HOPPER, name: '漏斗', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 203 } },
   [BlockType.PISTON_HEAD]: { id: BlockType.PISTON_HEAD, name: '活塞头', solid: true, transparent: false, breakable: true, hardness: 2, textures: { all: 197 } },
+  [BlockType.LEVER]: { id: BlockType.LEVER, name: '拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 6 } },
+  [BlockType.LEVER_ON]: { id: BlockType.LEVER_ON, name: '激活的拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 208 } },
 
   // === 指令专属方块 (创造模式+作弊才能获取) ===
   [BlockType.COMMAND_BLOCK]: { id: BlockType.COMMAND_BLOCK, name: '命令方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 210 }, commandExclusive: true },
