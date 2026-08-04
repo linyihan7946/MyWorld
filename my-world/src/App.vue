@@ -23,7 +23,7 @@
         <h2>游戏暂停</h2>
         <button @click="uiStore.showPause = false; tryLockPointer()">继续游戏</button>
         <button @click="toggleFullscreen">全屏切换 (F11)</button>
-        <button @click="uiStore.showPause = false; started = false; engine?.dispose(); engine = null">返回主菜单</button>
+        <button @click="returnToMenu">返回主菜单</button>
       </div>
     </div>
 
@@ -256,6 +256,13 @@ const respawn = () => {
   if (engine) {
     engine.respawn()
   }
+}
+
+const returnToMenu = () => {
+  uiStore.showPause = false
+  started.value = false
+  engine?.dispose()
+  engine = null
 }
 
 // ── Mobile control handlers ──

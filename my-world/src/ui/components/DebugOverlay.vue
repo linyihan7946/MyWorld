@@ -6,8 +6,8 @@
       <div>FPS: {{ fps }} {{ fps >= 60 ? '✓' : fps < 30 ? '⚠' : '' }}</div>
       <div>&nbsp;</div>
       <div>XYZ: {{ pos.x.toFixed(3) }} / {{ pos.y.toFixed(3) }} / {{ pos.z.toFixed(3) }}</div>
-      <div>Block: {{ pos.x | floor }} {{ pos.y | floor }} {{ pos.z | floor }}</div>
-      <div>Chunk: {{ chunkX }} {{ pos.y | floor }} {{ chunkZ }} in {{ chunkLocalX }} {{ pos.y | floor }} {{ chunkLocalZ }}</div>
+      <div>Block: {{ Math.floor(pos.x) }} {{ Math.floor(pos.y) }} {{ Math.floor(pos.z) }}</div>
+      <div>Chunk: {{ chunkX }} {{ Math.floor(pos.y) }} {{ chunkZ }} in {{ chunkLocalX }} {{ Math.floor(pos.y) }} {{ chunkLocalZ }}</div>
       <div>Facing: {{ facing }} ({{ facingAxis }})</div>
       <div>Biome: {{ playerStore.biome }}</div>
       <div>Weather: {{ playerStore.weather }}</div>
