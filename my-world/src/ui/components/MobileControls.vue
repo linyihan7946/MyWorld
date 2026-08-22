@@ -1,29 +1,23 @@
 <template>
-  <div class="mobile-controls" @touchstart.prevent @touchend.prevent @touchmove.prevent>
+  <div class="mobile-controls" @touchstart.prevent @touchend.prevent @touchmove.prevent @touchcancel.prevent>
     <!-- 摇杆 (左下) -->
     <div class="joystick-zone" ref="joystickZone"
-      @touchstart="onJoystickStart" @touchmove="onJoystickMove" @touchend="onJoystickEnd">
+      @touchstart="onJoystickStart" @touchmove="onJoystickMove" @touchend="onJoystickEnd" @touchcancel="onJoystickEnd">
       <div class="joystick-base">
         <div class="joystick-thumb" :style="{ transform: `translate(${joyX}px, ${joyY}px)` }"></div>
       </div>
     </div>
 
-    <!-- 相机拖拽区 (右侧大半屏) -->
+    <!-- 交互区 (右侧大半屏)：拖拽转视角 / 短按放方块 / 长按挖方块 -->
     <div class="look-zone" ref="lookZone"
-      @touchstart="onLookStart" @touchmove="onLookMove" @touchend="onLookEnd"></div>
+      @touchstart="onLookStart" @touchmove="onLookMove" @touchend="onLookEnd" @touchcancel="onLookEnd"></div>
 
-    <!-- 动作按钮 (右下，紧凑 3×2) -->
+    <!-- 动作按钮 (右下，紧凑 2×2) -->
     <div class="action-buttons">
-      <button class="act-btn place-btn" @touchstart.stop="startAction('place')" @touchend.stop="stopAction('place')">
-        <span class="btn-icon">🖐</span>
-      </button>
-      <button class="act-btn attack-btn" @touchstart.stop="startAction('attack')" @touchend.stop="stopAction('attack')">
-        <span class="btn-icon">⛏</span>
-      </button>
-      <button class="act-btn jump-btn" @touchstart.stop="startAction('jump')" @touchend.stop="stopAction('jump')">
+      <button class="act-btn jump-btn" @touchstart.stop="startAction('jump')" @touchend.stop="stopAction('jump')" @touchcancel.stop="stopAction('jump')">
         <span class="btn-icon">⬆</span>
       </button>
-      <button class="act-btn sneak-btn" @touchstart.stop="startAction('sneak')" @touchend.stop="stopAction('sneak')">
+      <button class="act-btn sneak-btn" @touchstart.stop="startAction('sneak')" @touchend.stop="stopAction('sneak')" @touchcancel.stop="stopAction('sneak')">
         <span class="btn-icon">⬇</span>
       </button>
       <button class="act-btn inv-btn" @touchstart.stop="emit('openInventory')">
@@ -63,16 +57,28 @@ const joyRadius = 35
 let joyTouchId: number | null = null
 let joyBase = { x: 0, y: 0 }
 
-// ── 相机拖拽 ──
+// ── 交互区手势 ──
 const lookZone = ref<HTMLElement | null>(null)
 let lookTouchId: number | null = null
+let lookStart = { x: 0, y: 0 }
 let lookPrev = { x: 0, y: 0 }
+let lookMoved = false           // 是否已进入拖拽转视角
+let longPressActive = false     // 是否已进入长按挖矿
+let longPressTimer: number | null = null
+
+// 长按判定阈值（毫秒）与位移阈值（像素）
+const LONG_PRESS_MS = 300
+const TAP_MOVE_THRESHOLD = 12
 
 function getTouchPos(e: TouchEvent, id: number): { x: number; y: number } | null {
   for (let i = 0; i < e.touches.length; i++) {
     if (e.touches[i].identifier === id) return { x: e.touches[i].clientX, y: e.touches[i].clientY }
   }
   return null
+}
+
+function clearLookTimer() {
+  if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null }
 }
 
 // ── 摇杆事件 ──
@@ -117,20 +123,46 @@ function updateJoystick(cx: number, cy: number) {
   emit('move', -dy / joyRadius, dx / joyRadius)
 }
 
-// ── 相机拖拽事件 ──
+// ── 交互区事件：拖拽转视角 / 短按放方块 / 长按挖方块 ──
 function onLookStart(e: TouchEvent) {
   if (lookTouchId !== null) return
   const t = e.changedTouches[0]
   lookTouchId = t.identifier
+  lookStart = { x: t.clientX, y: t.clientY }
   lookPrev = { x: t.clientX, y: t.clientY }
+  lookMoved = false
+  longPressActive = false
+  // 启动长按定时器：超过阈值未移动 → 开始挖方块
+  clearLookTimer()
+  longPressTimer = window.setTimeout(() => {
+    if (!lookMoved) {
+      longPressActive = true
+      emit('action', 'attack', true)
+    }
+  }, LONG_PRESS_MS)
 }
 function onLookMove(e: TouchEvent) {
   if (lookTouchId === null) return
   const pos = getTouchPos(e, lookTouchId)
   if (!pos) return
-  const dx = pos.x - lookPrev.x, dy = pos.y - lookPrev.y
+  const dx = pos.x - lookPrev.x
+  const dy = pos.y - lookPrev.y
   lookPrev = { x: pos.x, y: pos.y }
-  if (dx !== 0 || dy !== 0) emit('look', dx, dy)
+
+  // 长按挖矿中：保持挖矿，不转视角
+  if (longPressActive) return
+
+  // 位移超过阈值 → 判定为拖拽转视角，取消长按
+  const totalDx = pos.x - lookStart.x
+  const totalDy = pos.y - lookStart.y
+  if (!lookMoved && Math.hypot(totalDx, totalDy) > TAP_MOVE_THRESHOLD) {
+    lookMoved = true
+    clearLookTimer()
+  }
+
+  if (lookMoved && (dx !== 0 || dy !== 0)) {
+    emit('look', dx, dy)
+  }
 }
 function onLookEnd(e: TouchEvent) {
   let ended = false
@@ -138,16 +170,39 @@ function onLookEnd(e: TouchEvent) {
     if (e.changedTouches[i].identifier === lookTouchId) { ended = true; break }
   }
   if (!ended) return
+
+  clearLookTimer()
+
+  if (longPressActive) {
+    // 结束长按挖矿
+    longPressActive = false
+    emit('action', 'attack', false)
+  } else if (!lookMoved) {
+    // 短按 → 放方块
+    emit('action', 'place', true)
+  }
+
+  // 尝试迁移到备用手指（多指操作）
   if (e.touches.length > 0 && lookZone.value) {
     const rect = lookZone.value.getBoundingClientRect()
     for (let i = 0; i < e.touches.length; i++) {
       const t = e.touches[i]
       if (t.clientX >= rect.left && t.clientX <= rect.right && t.clientY >= rect.top && t.clientY <= rect.bottom) {
-        lookTouchId = t.identifier; lookPrev = { x: t.clientX, y: t.clientY }; return
+        lookTouchId = t.identifier
+        lookStart = { x: t.clientX, y: t.clientY }
+        lookPrev = { x: t.clientX, y: t.clientY }
+        lookMoved = false
+        longPressActive = false
+        longPressTimer = window.setTimeout(() => {
+          if (!lookMoved) { longPressActive = true; emit('action', 'attack', true) }
+        }, LONG_PRESS_MS)
+        return
       }
     }
   }
   lookTouchId = null
+  longPressActive = false
+  lookMoved = false
 }
 
 // ── 动作按钮 ──
@@ -185,36 +240,34 @@ function onHotbarTouch(e: TouchEvent) {
   background: rgba(255,255,255,0.38); border: 2px solid rgba(255,255,255,0.5);
 }
 
-/* ── 相机拖拽 ── */
+/* ── 交互区 ── */
 .look-zone {
   position: absolute; top: 0; right: 0; width: 55%; height: 68%;
   touch-action: none;
 }
 
-/* ── 动作按钮 (右下 3×2 紧凑) ── */
+/* ── 动作按钮 (右下 2×2 紧凑) ── */
 .action-buttons {
   position: absolute; bottom: 38px; right: 10px;
   display: grid;
-  grid-template-columns: 44px 44px 44px;
-  grid-template-rows: 44px 44px;
-  gap: 5px;
+  grid-template-columns: 52px 52px;
+  grid-template-rows: 52px 52px;
+  gap: 6px;
   z-index: 1;
 }
 .act-btn {
-  width: 44px; height: 44px; border-radius: 10px;
+  width: 52px; height: 52px; border-radius: 12px;
   border: 2px solid rgba(255,255,255,0.28);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; user-select: none; -webkit-user-select: none;
   touch-action: manipulation;
 }
-.btn-icon { font-size: 17px; line-height: 1; }
-.act-btn:active { transform: scale(0.88); border-color: rgba(255,255,255,0.7); }
+.btn-icon { font-size: 20px; line-height: 1; }
+.act-btn:active { transform: scale(0.9); border-color: rgba(255,255,255,0.7); }
 
 /* 按钮颜色 */
 .inv-btn   { background: rgba(80,60,140,0.65); }
 .cam-btn   { background: rgba(60,80,60,0.65); }
-.place-btn { background: rgba(60,100,180,0.65); }
-.attack-btn{ background: rgba(180,60,60,0.65); }
 .jump-btn  { background: rgba(60,160,80,0.65); }
 .sneak-btn { background: rgba(140,140,160,0.65); }
 
@@ -238,12 +291,12 @@ function onHotbarTouch(e: TouchEvent) {
   .look-zone { height: 62%; }
   .action-buttons {
     bottom: 14px; right: 8px;
-    grid-template-columns: 38px 38px 38px;
-    grid-template-rows: 38px 38px;
-    gap: 4px;
+    grid-template-columns: 46px 46px;
+    grid-template-rows: 46px 46px;
+    gap: 5px;
   }
-  .act-btn { width: 38px; height: 38px; border-radius: 8px; }
-  .btn-icon { font-size: 14px; }
+  .act-btn { width: 46px; height: 46px; border-radius: 10px; }
+  .btn-icon { font-size: 17px; }
   .hotbar-touch { bottom: 2px; width: 200px; height: 22px; }
   .hotbar-dot { width: 7px; height: 7px; }
 }

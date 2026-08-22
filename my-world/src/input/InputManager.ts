@@ -128,7 +128,9 @@ export class InputManager {
       if (pressed) this.onMouseDown?.(2)   // right click
       else this.onMouseUp?.(2)
     } else if (action === 'inventory' && pressed) {
-      this.onKeyDown?.('KeyE')
+      // 背包的开关逻辑在 InventoryScreen 的 document keydown 监听器里，
+      // 派发真实 keydown 事件才能触发它（onKeyDown 回调里 KeyE 只退出指针锁定）
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' }))
     } else if (action === 'toggleCamera' && pressed) {
       this.onKeyDown?.('KeyV')
     } else if (action.startsWith('slot') && pressed) {

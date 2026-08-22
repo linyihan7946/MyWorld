@@ -686,9 +686,9 @@ export class Engine {
 
   private xHeld = false
 
-  /** 游戏快捷键仅在指针锁定时生效；解锁后交还系统/浏览器 */
+  /** 游戏快捷键仅在指针锁定时生效；解锁后交还系统/浏览器。触摸设备无指针锁定概念，视为始终可用 */
   private get shortcutsEnabled(): boolean {
-    return this.inputManager.locked
+    return this.isTouchDevice || this.inputManager.locked
   }
 
   private setupInputHandlers(): void {
