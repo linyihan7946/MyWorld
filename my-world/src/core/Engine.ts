@@ -11,7 +11,7 @@ import { WeatherAudio } from '@/rendering/WeatherAudio'
 import { GameAudio } from '@/rendering/GameAudio'
 import { BrewingSystem } from '@/gameplay/BrewingSystem'
 import { potionEffects } from '@/gameplay/PotionEffect'
-import { playerStats, updateHunger, exhaustJump, exhaustMine, exhaustDamage, tryEatFood, addExperience } from '@/gameplay/PlayerStats'
+import { playerStats, updateHunger, exhaustJump, exhaustMine, exhaustDamage, tryEatFood, addExperience, resetPlayerStats } from '@/gameplay/PlayerStats'
 import { InputManager } from '@/input/InputManager'
 import { WorldGenerator } from '@/world/WorldGenerator'
 import { ChunkManager } from '@/world/ChunkManager'
@@ -28,7 +28,9 @@ import { EntityManager } from '@/entities/EntityManager'
 import { Animal, type AnimalKind } from '@/entities/characters/Animal'
 import { Zombie } from '@/entities/characters/Zombie'
 import { Steve } from '@/entities/characters/Steve'
+import { DroppedItem } from '@/entities/DroppedItem'
 import { useContainerStore } from '@/ui/stores/containerStore'
+import { useFurnaceStore } from '@/ui/stores/furnaceStore'
 import { useUIStore } from '@/ui/stores/uiStore'
 import {
   debugStickUse, toggleLightBlock, isDebuggable,
@@ -54,7 +56,26 @@ const ITEM_TO_BLOCK: Record<string, BlockType> = {
   redstone_dust: BlockType.REDSTONE_DUST, piston: BlockType.PISTON,
   sticky_piston: BlockType.STICKY_PISTON, repeater: BlockType.REPEATER,
   comparator: BlockType.COMPARATOR, observer: BlockType.OBSERVER,
-  hopper: BlockType.HOPPER,
+  hopper: BlockType.HOPPER, redstone_torch: BlockType.REDSTONE_TORCH,
+
+  // Doors & trapdoors
+  oak_door: BlockType.OAK_DOOR, spruce_door: BlockType.SPRUCE_DOOR,
+  birch_door: BlockType.BIRCH_DOOR, jungle_door: BlockType.JUNGLE_DOOR,
+  acacia_door: BlockType.ACACIA_DOOR, dark_oak_door: BlockType.DARK_OAK_DOOR,
+  iron_door: BlockType.IRON_DOOR, oak_trapdoor: BlockType.OAK_TRAPDOOR,
+  spruce_trapdoor: BlockType.SPRUCE_TRAPDOOR, birch_trapdoor: BlockType.BIRCH_TRAPDOOR,
+  jungle_trapdoor: BlockType.JUNGLE_TRAPDOOR, acacia_trapdoor: BlockType.ACACIA_TRAPDOOR,
+  dark_oak_trapdoor: BlockType.DARK_OAK_TRAPDOOR, iron_trapdoor: BlockType.IRON_TRAPDOOR,
+
+  // Buttons & pressure plates
+  oak_button: BlockType.OAK_BUTTON, stone_button: BlockType.STONE_BUTTON,
+  oak_pressure_plate: BlockType.OAK_PRESSURE_PLATE, stone_pressure_plate: BlockType.STONE_PRESSURE_PLATE,
+  light_weighted_pressure_plate: BlockType.LIGHT_WEIGHTED_PRESSURE_PLATE,
+  heavy_weighted_pressure_plate: BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE,
+
+  // Rails
+  rail: BlockType.RAIL, powered_rail: BlockType.POWERED_RAIL,
+  detector_rail: BlockType.DETECTOR_RAIL, activator_rail: BlockType.ACTIVATOR_RAIL,
 
   // Stone variants
   granite: BlockType.GRANITE, polished_granite: BlockType.POLISHED_GRANITE,
@@ -259,11 +280,29 @@ const BLOCK_TO_ITEM: Record<number, string> = {
   [BlockType.REDSTONE_DUST]: 'redstone_dust', [BlockType.PISTON]: 'piston',
   [BlockType.STICKY_PISTON]: 'sticky_piston', [BlockType.REPEATER]: 'repeater',
   [BlockType.COMPARATOR]: 'comparator', [BlockType.OBSERVER]: 'observer',
-  [BlockType.HOPPER]: 'hopper',
+  [BlockType.HOPPER]: 'hopper', [BlockType.LEVER]: 'lever',
+  [BlockType.LEVER_ON]: 'lever',
+  [BlockType.REDSTONE_TORCH]: 'redstone_torch', [BlockType.REDSTONE_TORCH_ON]: 'redstone_torch',
+  // Doors & trapdoors
+  [BlockType.OAK_DOOR]: 'oak_door', [BlockType.SPRUCE_DOOR]: 'spruce_door',
+  [BlockType.BIRCH_DOOR]: 'birch_door', [BlockType.JUNGLE_DOOR]: 'jungle_door',
+  [BlockType.ACACIA_DOOR]: 'acacia_door', [BlockType.DARK_OAK_DOOR]: 'dark_oak_door',
+  [BlockType.IRON_DOOR]: 'iron_door', [BlockType.OAK_TRAPDOOR]: 'oak_trapdoor',
+  [BlockType.SPRUCE_TRAPDOOR]: 'spruce_trapdoor', [BlockType.BIRCH_TRAPDOOR]: 'birch_trapdoor',
+  [BlockType.JUNGLE_TRAPDOOR]: 'jungle_trapdoor', [BlockType.ACACIA_TRAPDOOR]: 'acacia_trapdoor',
+  [BlockType.DARK_OAK_TRAPDOOR]: 'dark_oak_trapdoor', [BlockType.IRON_TRAPDOOR]: 'iron_trapdoor',
+  // Buttons & pressure plates
+  [BlockType.OAK_BUTTON]: 'oak_button', [BlockType.STONE_BUTTON]: 'stone_button',
+  [BlockType.OAK_PRESSURE_PLATE]: 'oak_pressure_plate', [BlockType.STONE_PRESSURE_PLATE]: 'stone_pressure_plate',
+  [BlockType.LIGHT_WEIGHTED_PRESSURE_PLATE]: 'light_weighted_pressure_plate',
+  [BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE]: 'heavy_weighted_pressure_plate',
+  // Rails
+  [BlockType.RAIL]: 'rail', [BlockType.POWERED_RAIL]: 'powered_rail',
+  [BlockType.DETECTOR_RAIL]: 'detector_rail', [BlockType.ACTIVATOR_RAIL]: 'activator_rail',
   // Ores
   [BlockType.COAL_ORE]: 'coal', [BlockType.IRON_ORE]: 'iron_ingot',
   [BlockType.GOLD_ORE]: 'gold_ingot', [BlockType.DIAMOND_ORE]: 'diamond',
-  [BlockType.EMERALD_ORE]: 'emerald', [BlockType.REDSTONE_ORE]: 'redstone',
+  [BlockType.EMERALD_ORE]: 'emerald', [BlockType.REDSTONE_ORE]: 'redstone_dust',
   [BlockType.LAPIS_ORE]: 'lapis_lazuli', [BlockType.COPPER_ORE]: 'copper_ingot',
   [BlockType.NETHER_GOLD_ORE]: 'gold_ingot', [BlockType.NETHER_QUARTZ_ORE]: 'quartz',
   // Stone variants
@@ -385,6 +424,10 @@ export class Engine {
   private isBreaking = false
   private autoSaveInterval: number | null = null
 
+  // === Dropped items ===
+  private droppedItems: DroppedItem[] = []
+  private droppedItemIdCounter = 0
+
   // === NEW: Game mode ===
   private gameMode: 'survival' | 'creative' = 'survival' // default survival
   private isFlying = false
@@ -424,6 +467,16 @@ export class Engine {
   private mobSpawnTimer = 0
   private weatherTimer = 60 // seconds until next auto-weather change
   private nextEntityId = 1
+
+  // === 功能方块状态 ===
+  /** 睡觉状态: 渐黑 → 跳到早上 → 渐亮 */
+  private sleeping = false
+  private sleepPhase = 0
+  private sleepBedPos = new THREE.Vector3()
+  /** 点燃的 TNT: "x,y,z" → 剩余引信秒数 */
+  private tntFuses = new Map<string, { x: number; y: number; z: number; fuse: number }>()
+  /** 玩家当前踩着的压力板位置（离开时释放信号） */
+  private lastPlatePos: { x: number; y: number; z: number } | null = null
   private isRespawning = false
 
   // 性能优化：节流计数器
@@ -616,6 +669,8 @@ export class Engine {
     } else {
       inv.setSurvivalInventory()
     }
+    // 新游戏重置玩家状态（饥饿/经验）
+    resetPlayerStats()
 
     window.addEventListener('resize', () => this.onResize())
 
@@ -623,20 +678,13 @@ export class Engine {
     const pStoreInit = usePlayerStore()
     pStoreInit.saveCallback = () => this.saveGame()
 
-    // 自动保存定时器（60秒）
-    this.autoSaveInterval = window.setInterval(() => {
-      if (this.gameMode === 'survival' && !this.isDead) {
-        this.saveGame()
-      }
-    }, 60000)
-
     this.gameLoop.start(
       (dt) => this.update(dt),
       (dt) => this.render(dt),
     )
   }
 
-  private f3Held = false
+  private xHeld = false
 
   /** 游戏快捷键仅在指针锁定时生效；解锁后交还系统/浏览器 */
   private get shortcutsEnabled(): boolean {
@@ -684,52 +732,45 @@ export class Engine {
       // ── 以下快捷键仅在指针锁定时生效 ──
       if (!locked) return
 
-      // F3 组合键追踪
-      if (key === 'F3') { this.f3Held = true; return }
+      // X 组合键追踪
+      if (key === 'KeyX') { this.xHeld = true; return }
 
-      if (this.f3Held) {
+      if (this.xHeld) {
         if (key === 'KeyA') {
           this.chunkManager.markAllDirty()
           pStore.breakToolName = '§a区块已刷新'
           setTimeout(() => { pStore.breakToolName = null }, 2000)
-          this.f3Held = false; return
+          this.xHeld = false; return
         }
         if (key === 'KeyB') {
           ui.showHitboxes = !ui.showHitboxes
           pStore.breakToolName = `碰撞箱: ${ui.showHitboxes ? '§a显示' : '§c隐藏'}`
           setTimeout(() => { pStore.breakToolName = null }, 2000)
-          this.f3Held = false; return
+          this.xHeld = false; return
         }
-        if (key === 'KeyG') {
+        if (key === 'KeyC') {
           ui.showChunkBorders = !ui.showChunkBorders
           pStore.breakToolName = `区块边界: ${ui.showChunkBorders ? '§a显示' : '§c隐藏'}`
           setTimeout(() => { pStore.breakToolName = null }, 2000)
-          this.f3Held = false; return
+          this.xHeld = false; return
         }
-        if (key === 'KeyH') {
+        if (key === 'KeyT') {
           ui.showAdvancedTooltips = !ui.showAdvancedTooltips
           pStore.breakToolName = `高级提示: ${ui.showAdvancedTooltips ? '§a显示' : '§c隐藏'}`
           setTimeout(() => { pStore.breakToolName = null }, 2000)
-          this.f3Held = false; return
+          this.xHeld = false; return
         }
-        this.f3Held = false
+        this.xHeld = false
       }
 
-      if (key === 'F3') {
-        ui.showDebug = !ui.showDebug
-        pStore.breakToolName = `调试: ${ui.showDebug ? '§a显示' : '§c隐藏'}`
-        setTimeout(() => { pStore.breakToolName = null }, 2000)
-        return
-      }
-
-      if (key === 'F1') {
+      if (key === 'KeyZ') {
         ui.showHUD = !ui.showHUD
         return
       }
 
-      if (key === 'F5' || key === 'KeyV') this.cameraManager.toggleMode()
+      if (key === 'KeyV') this.cameraManager.toggleMode()
 
-      if (key === 'F11') {
+      if (key === 'KeyP') {
         if (document.fullscreenElement) {
           document.exitFullscreen()
         } else {
@@ -771,6 +812,11 @@ export class Engine {
         setTimeout(() => { pStore.breakToolName = null }, 2000)
       }
 
+      if (key === 'KeyQ') {
+        this.dropSelectedItem()
+        return
+      }
+
       if (key === 'Space') {
         if (this.gameMode === 'creative') {
           const now = performance.now()
@@ -786,7 +832,17 @@ export class Engine {
     }
 
     this.inputManager.onKeyUp = (key: string) => {
-      if (key === 'F3') this.f3Held = false
+      if (key === 'KeyX') {
+        // X 单独按下（无组合键）→ 切换调试屏幕
+        if (this.xHeld) {
+          const ui = useUIStore()
+          ui.showDebug = !ui.showDebug
+          const pStore = usePlayerStore()
+          pStore.breakToolName = `调试: ${ui.showDebug ? '§a显示' : '§c隐藏'}`
+          setTimeout(() => { pStore.breakToolName = null }, 2000)
+        }
+        this.xHeld = false
+      }
     }
 
     this.inputManager.onMouseMove = (dx: number, dy: number) => {
@@ -829,20 +885,19 @@ export class Engine {
         if (!forcePlace && this.handleSpecialInteraction()) {
           return
         }
-        if (!forcePlace && !this.openTargetContainer()) {
-          if (!this.equipArmor()) {
-            if (!this.drinkPotion()) {
-              if (!this.eatFood()) {
-                // 传送门激活（打火石/末影之眼 → 尝试激活传送门）
-                if (!forcePlace && this.tryActivatePortalOnTarget()) {
-                  return
-                }
-                this.placeBlock()
+        if (!forcePlace && this.openTargetContainer()) {
+          return
+        }
+        if (!this.equipArmor()) {
+          if (!this.drinkPotion()) {
+            if (!this.eatFood()) {
+              // 传送门激活（打火石/末影之眼 → 尝试激活传送门）
+              if (!forcePlace && this.tryActivatePortalOnTarget()) {
+                return
               }
+              this.placeBlock()
             }
           }
-        } else {
-          this.placeBlock()
         }
       }
     }
@@ -865,6 +920,20 @@ export class Engine {
         for (const slot of contents) {
           if (slot.item) inventory.addItem(slot.item, slot.count, slot.blockType)
         }
+      }
+
+      // 熔炉被破坏时掉落内容物
+      if (data.blockType === BlockType.FURNACE || data.blockType === BlockType.BLAST_FURNACE || data.blockType === BlockType.SMOKER) {
+        const contents = useFurnaceStore().removeFurnace(data.position.x, data.position.y, data.position.z)
+        const inventory = useInventoryStore()
+        for (const slot of contents) {
+          if (slot.item) inventory.addItem(slot.item, slot.count, slot.blockType)
+        }
+      }
+
+      // TNT 在引信燃烧期间被破坏则取消爆炸
+      if (data.blockType === BlockType.TNT) {
+        this.tntFuses.delete(`${data.position.x},${data.position.y},${data.position.z}`)
       }
 
       // In creative mode, don't add blocks to inventory
@@ -896,13 +965,17 @@ export class Engine {
   }
 
   private toggleGameMode(): void {
-    this.gameMode = this.gameMode === 'survival' ? 'creative' : 'survival'
     const inv = useInventoryStore()
-    if (this.gameMode === 'creative') {
+    if (this.gameMode === 'survival') {
+      // 从生存切换到创造：保存生存物品栏
+      inv.saveSurvivalInventory()
+      this.gameMode = 'creative'
       inv.setCreativeInventory()
     } else {
+      // 从创造切换到生存：恢复之前保存的物品栏
+      this.gameMode = 'survival'
       this.isFlying = false
-      inv.setSurvivalInventory()
+      inv.restoreSurvivalInventory()
     }
     const pStore = usePlayerStore()
     pStore.gameMode = this.gameMode
@@ -933,7 +1006,20 @@ export class Engine {
   /** 公开方法：设置游戏模式 */
   setGameMode(mode: 'survival' | 'creative'): void {
     if (this.gameMode === mode) return
-    this.toggleGameMode()
+    const inv = useInventoryStore()
+    if (mode === 'creative') {
+      inv.saveSurvivalInventory()
+      this.gameMode = 'creative'
+      inv.setCreativeInventory()
+    } else {
+      this.gameMode = 'survival'
+      this.isFlying = false
+      inv.restoreSurvivalInventory()
+    }
+    const pStore = usePlayerStore()
+    pStore.gameMode = this.gameMode
+    pStore.isFlying = this.isFlying
+    this.eventBus.emit('game:modeChanged', this.gameMode)
   }
 
   private startBreaking(): void {
@@ -1186,6 +1272,8 @@ export class Engine {
       const ui = useUIStore()
       ui.showCrafting = true
       useInventoryStore().showInventory = true
+      // 退出指针锁定，否则背包界面打开后鼠标仍被锁定无法点击
+      if (document.pointerLockElement) document.exitPointerLock()
       return true
     }
 
@@ -1196,6 +1284,78 @@ export class Engine {
       ui.anvilX = position.x
       ui.anvilY = position.y
       ui.anvilZ = position.z
+      // 铁砧叠加层在物品栏根节点内渲染，需要物品栏容器可见
+      useInventoryStore().showInventory = true
+      if (document.pointerLockElement) document.exitPointerLock()
+      return true
+    }
+
+    // 熔炉/高炉/烟熏炉: 打开烧炼界面
+    if (blockType === BlockType.FURNACE || blockType === BlockType.BLAST_FURNACE || blockType === BlockType.SMOKER) {
+      useFurnaceStore().openFurnace(blockType, position.x, position.y, position.z)
+      if (document.pointerLockElement) document.exitPointerLock()
+      return true
+    }
+
+    // 床: 夜晚右键睡觉，跳到第二天早上
+    if (blockType >= BlockType.WHITE_BED && blockType <= BlockType.BLACK_BED) {
+      this.trySleepInBed(position)
+      return true
+    }
+
+    // TNT: 手持打火石右键点燃
+    if (blockType === BlockType.TNT) {
+      const inv = useInventoryStore()
+      if (inv.hotbar[inv.selectedSlot]?.item === 'flint_and_steel') {
+        this.igniteTnt(position.x, position.y, position.z)
+        return true
+      }
+      return false
+    }
+
+    // 门: 右键开关（铁门需要红石，不能手动）
+    if (this.isDoorBlock(blockType)) {
+      const isIron = blockType === BlockType.IRON_DOOR
+      if (isIron) {
+        pStore.breakToolName = '🔒 铁门只能被红石信号打开'
+        setTimeout(() => { pStore.breakToolName = null }, 1500)
+        return true
+      }
+      const isOpen = getBlockStateValue(position.x, position.y, position.z, 'open', false) as boolean
+      setBlockState(position.x, position.y, position.z, { open: !isOpen })
+      pStore.breakToolName = isOpen ? '门: 已关闭' : '门: 已打开'
+      setTimeout(() => { pStore.breakToolName = null }, 1500)
+      this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+      return true
+    }
+
+    // 活板门: 右键开关（铁活板门需要红石）
+    if (this.isTrapdoorBlock(blockType)) {
+      const isIron = blockType === BlockType.IRON_TRAPDOOR
+      if (isIron) {
+        pStore.breakToolName = '🔒 铁活板门只能被红石信号打开'
+        setTimeout(() => { pStore.breakToolName = null }, 1500)
+        return true
+      }
+      const isOpen = getBlockStateValue(position.x, position.y, position.z, 'open', false) as boolean
+      setBlockState(position.x, position.y, position.z, { open: !isOpen })
+      pStore.breakToolName = isOpen ? '活板门: 已关闭' : '活板门: 已打开'
+      setTimeout(() => { pStore.breakToolName = null }, 1500)
+      this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+      return true
+    }
+
+    // 按钮: 按下输出短暂红石脉冲
+    if (blockType === BlockType.OAK_BUTTON || blockType === BlockType.STONE_BUTTON) {
+      setBlockState(position.x, position.y, position.z, { powered: true })
+      pStore.breakToolName = '按钮: 按下'
+      setTimeout(() => { pStore.breakToolName = null }, 1500)
+      this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+      // 原版木质按钮约 1.5 秒弹起
+      setTimeout(() => {
+        setBlockState(position.x, position.y, position.z, { powered: false })
+        this.chunkManager.markBlockDirty(position.x, position.y, position.z)
+      }, 1500)
       return true
     }
 
@@ -1262,6 +1422,165 @@ export class Engine {
     return true
   }
 
+  /** 门方块判定 */
+  private isDoorBlock(blockType: BlockType): boolean {
+    return blockType >= BlockType.OAK_DOOR && blockType <= BlockType.IRON_DOOR
+  }
+
+  /** 活板门方块判定 */
+  private isTrapdoorBlock(blockType: BlockType): boolean {
+    return blockType >= BlockType.OAK_TRAPDOOR && blockType <= BlockType.IRON_TRAPDOOR
+  }
+
+  /** 尝试在床上睡觉: 仅夜晚可睡, 睡着后跳到第二天早上 */
+  private trySleepInBed(bedPos: THREE.Vector3): void {
+    const pStore = usePlayerStore()
+    const isNight = this.timeOfDay < 0.22 || this.timeOfDay > 0.78
+    if (!isNight) {
+      pStore.breakToolName = '🌙 只能在夜晚睡觉'
+      setTimeout(() => { pStore.breakToolName = null }, 2000)
+      return
+    }
+    if (this.sleeping) return
+    this.sleeping = true
+    this.sleepPhase = 0
+    this.sleepBedPos.copy(bedPos)
+    if (document.pointerLockElement) document.exitPointerLock()
+    pStore.breakToolName = '🌙 睡觉中...'
+  }
+
+  /** 睡觉: 渐黑 → 跳到早上 → 渐亮 */
+  private updateSleep(dt: number): void {
+    if (!this.sleeping) return
+    const ui = useUIStore()
+    if (this.sleepPhase === 0) {
+      ui.sleepFade = Math.min(1, ui.sleepFade + dt * 1.6)
+      if (ui.sleepFade >= 1) {
+        this.sleepPhase = 1
+        // 跳到第二天早上
+        this.timeOfDay = 0.26
+        // 起床站在床边
+        this.playerPosition.set(this.sleepBedPos.x + 0.5, this.sleepBedPos.y + 1, this.sleepBedPos.z + 0.5)
+        this.playerVelocity.set(0, 0, 0)
+        this.fallStartY = this.playerPosition.y
+        this.wasInAir = false
+      }
+    } else {
+      ui.sleepFade = Math.max(0, ui.sleepFade - dt * 1.2)
+      if (ui.sleepFade <= 0) {
+        ui.sleepFade = 0
+        this.sleeping = false
+        this.sleepPhase = 0
+        const pStore = usePlayerStore()
+        pStore.breakToolName = '☀️ 新的一天开始了'
+        setTimeout(() => { pStore.breakToolName = null }, 2000)
+      }
+    }
+  }
+
+  /** 点燃 TNT: 引信 4 秒后爆炸 */
+  private igniteTnt(x: number, y: number, z: number): void {
+    this.tntFuses.set(`${x},${y},${z}`, { x, y, z, fuse: 4 })
+    const pStore = usePlayerStore()
+    pStore.breakToolName = '💥 TNT 已点燃!'
+    setTimeout(() => { pStore.breakToolName = null }, 1500)
+  }
+
+  /** 更新所有 TNT 引信 */
+  private updateTntFuses(dt: number): void {
+    if (this.tntFuses.size === 0) return
+    for (const [key, tnt] of [...this.tntFuses]) {
+      tnt.fuse -= dt
+      if (tnt.fuse <= 0) {
+        this.tntFuses.delete(key)
+        // 引信烧完, TNT 本体被炸毁
+        this.chunkManager.setBlock(tnt.x, tnt.y, tnt.z, BlockType.AIR)
+        this.explodeTnt(tnt.x, tnt.y, tnt.z)
+      }
+    }
+  }
+
+  /** TNT 爆炸: 摧毁周围方块并伤害玩家 */
+  private explodeTnt(cx: number, cy: number, cz: number): void {
+    const R = 4
+    for (let dx = -R; dx <= R; dx++) {
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dz = -R; dz <= R; dz++) {
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+          if (dist > R) continue
+          const x = cx + dx
+          const y = cy + dy
+          const z = cz + dz
+          const bt = this.chunkManager.getBlock(x, y, z) as BlockType
+          if (bt === BlockType.AIR || bt === BlockType.WATER) continue
+          if (bt === BlockType.BEDROCK || bt === BlockType.OBSIDIAN || bt === BlockType.CRYING_OBSIDIAN) continue
+          const def = BLOCK_REGISTRY[bt]
+          if (!def || !def.breakable) continue
+          if (bt === BlockType.TNT) {
+            // 连锁点燃相邻 TNT
+            const key = `${x},${y},${z}`
+            if (!this.tntFuses.has(key)) this.tntFuses.set(key, { x, y, z, fuse: 0.4 })
+            continue
+          }
+          // 清理被炸毁容器的数据
+          if (bt === BlockType.CHEST || bt === BlockType.BARREL || bt === BlockType.HOPPER) {
+            useContainerStore().removeContainer(x, y, z)
+          }
+          if (bt === BlockType.FURNACE || bt === BlockType.BLAST_FURNACE || bt === BlockType.SMOKER) {
+            useFurnaceStore().removeFurnace(x, y, z)
+          }
+          this.chunkManager.setBlock(x, y, z, BlockType.AIR)
+        }
+      }
+    }
+    // 伤害玩家（与爆炸中心距离相关）
+    const px = this.playerPosition.x
+    const py = this.playerPosition.y + 0.9
+    const pz = this.playerPosition.z
+    const pd = Math.sqrt((px - (cx + 0.5)) ** 2 + (py - (cy + 0.5)) ** 2 + (pz - (cz + 0.5)) ** 2)
+    const damageRange = R * 1.6
+    if (pd < damageRange) {
+      const damage = Math.round((1 - pd / damageRange) * 38)
+      if (damage > 0) this.applyDamage(damage, 'TNT爆炸')
+    }
+    this.gameAudio.playExplosion()
+  }
+
+  /** 压力板: 玩家站上去输出红石信号, 离开后释放 */
+  private updatePressurePlates(): void {
+    const feetX = Math.floor(this.playerPosition.x)
+    const feetY = Math.floor(this.playerPosition.y + 0.05)
+    const feetZ = Math.floor(this.playerPosition.z)
+    // 压力板是完整方块碰撞, 玩家站在其顶面, 检测脚下与其所在格
+    const candidates = [feetY, feetY - 1]
+    let platePos: { x: number; y: number; z: number } | null = null
+    for (const y of candidates) {
+      const bt = this.chunkManager.getBlock(feetX, y, feetZ) as BlockType
+      if (bt >= BlockType.OAK_PRESSURE_PLATE && bt <= BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE) {
+        platePos = { x: feetX, y, z: feetZ }
+        break
+      }
+    }
+
+    if (platePos) {
+      if (!getBlockStateValue(platePos.x, platePos.y, platePos.z, 'powered', false)) {
+        setBlockState(platePos.x, platePos.y, platePos.z, { powered: true })
+        this.chunkManager.markBlockDirty(platePos.x, platePos.y, platePos.z)
+      }
+      this.lastPlatePos = platePos
+      return
+    }
+    // 离开压力板后释放信号
+    if (this.lastPlatePos) {
+      const { x, y, z } = this.lastPlatePos
+      if (getBlockStateValue(x, y, z, 'powered', false)) {
+        setBlockState(x, y, z, { powered: false })
+        this.chunkManager.markBlockDirty(x, y, z)
+      }
+      this.lastPlatePos = null
+    }
+  }
+
   /**
    * Check if player head is in water
    */
@@ -1308,6 +1627,19 @@ export class Engine {
   private update(dt: number): void {
     this.updateDayNight(dt)
 
+    // 功能方块状态更新
+    this.updateSleep(dt)
+    this.updateTntFuses(dt)
+    this.updatePressurePlates()
+    useFurnaceStore().update(dt)
+
+    // 处理来自背包界面的丢弃请求
+    const invDrop = useInventoryStore()
+    if (invDrop.pendingDrop) {
+      this.spawnDroppedItem(invDrop.pendingDrop.item, invDrop.pendingDrop.count, invDrop.pendingDrop.blockType as any)
+      invDrop.pendingDrop = null
+    }
+
     // Skip all movement/physics when dead
     if (this.isDead) {
       // Still update camera and chunks for death screen background
@@ -1326,7 +1658,10 @@ export class Engine {
       return
     }
 
-    const movement = this.inputManager.getMovement()
+    // 睡觉时忽略移动输入
+    const movement = this.sleeping
+      ? { forward: false, backward: false, left: false, right: false, jump: false, sprint: false, sneak: false }
+      : this.inputManager.getMovement()
     this.isUnderwater = this.checkUnderwater()
     const isSwimming = this.checkSwimming()
 
@@ -1915,6 +2250,54 @@ export class Engine {
   private updateCreatures(dt: number): void {
     this.entityManager.update(dt)
 
+    // === 掉落物更新与拾取 ===
+    const toRemove: string[] = []
+    for (const item of this.droppedItems) {
+      // 地面碰撞
+      if (item.position.y <= 0) {
+        item.position.y = 0.1
+        item.velocity.y = 0
+        item.onGround = true
+      } else {
+        // 检测方块碰撞
+        const blockBelow = this.chunkManager.getBlock(
+          Math.floor(item.position.x),
+          Math.floor(item.position.y - 0.1),
+          Math.floor(item.position.z)
+        )
+        if (blockBelow !== 0 && blockBelow !== undefined && !BLOCK_REGISTRY[blockBelow]?.transparent) {
+          item.position.y = Math.floor(item.position.y) + 0.15
+          item.velocity.y = 0
+          item.onGround = true
+        }
+      }
+
+      // 拾取检测（玩家 1.5 格范围内）
+      if (item.canPickup()) {
+        const dist = item.position.distanceTo(this.playerPosition)
+        if (dist < 1.5) {
+          const inv = useInventoryStore()
+          const leftover = inv.addItem(item.itemId, item.count, item.blockType as any)
+          if (leftover === 0) {
+            toRemove.push(item.id)
+          } else {
+            item.count = leftover
+          }
+        }
+      }
+
+      // 超时消失
+      if (item.shouldDespawn()) {
+        toRemove.push(item.id)
+      }
+    }
+
+    // 清理已拾取/消失的物品
+    for (const id of toRemove) {
+      this.entityManager.removeEntity(id)
+      this.droppedItems = this.droppedItems.filter(i => i.id !== id)
+    }
+
     // Auto weather cycling
     this.weatherTimer -= dt
     if (this.weatherTimer <= 0) {
@@ -2232,6 +2615,43 @@ export class Engine {
     } catch (err) {
       console.error('[Engine] Failed to load game:', err)
       return false
+    }
+  }
+
+  // ==================== 丢弃物品系统 ====================
+
+  /** 在玩家面前生成一个掉落物 */
+  spawnDroppedItem(itemId: string, count: number, blockType?: number): void {
+    const dropPos = this.playerPosition.clone()
+    // 丢弃在玩家前方 1.5 格
+    dropPos.x -= Math.sin(this.yaw) * 1.5
+    dropPos.z -= Math.cos(this.yaw) * 1.5
+    dropPos.y += 0.5
+
+    const id = `dropped_${this.droppedItemIdCounter++}`
+    const item = new DroppedItem(id, itemId, count, dropPos, blockType)
+    this.droppedItems.push(item)
+    this.entityManager.addEntity(item)
+  }
+
+  /** 丢弃快捷栏中选中的1个物品 */
+  private dropSelectedItem(): void {
+    const inv = useInventoryStore()
+    const slot = inv.hotbar[inv.selectedSlot]
+    if (!slot || !slot.item || slot.count <= 0) return
+
+    const dropped = inv.dropFromSlot(inv.selectedSlot, true)
+    if (dropped) {
+      this.spawnDroppedItem(dropped.item, dropped.count, dropped.blockType)
+    }
+  }
+
+  /** 丢弃物品栏中指定槽位的1个物品 */
+  dropFromInventorySlot(slotIndex: number, fromHotbar: boolean): void {
+    const inv = useInventoryStore()
+    const dropped = inv.dropFromSlot(slotIndex, fromHotbar)
+    if (dropped) {
+      this.spawnDroppedItem(dropped.item, dropped.count, dropped.blockType)
     }
   }
 

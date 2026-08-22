@@ -380,6 +380,18 @@ export class ChunkManager {
     }
   }
 
+  /**
+   * 红石能量变化等外部触发: 立即重建指定区块 (及其水平邻居) 的网格,
+   * 用于让粉尘点亮状态即时反映到渲染。
+   */
+  public rebuildMeshesAt(cx: number, cz: number): void {
+    for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const chunk = this.chunks.get(this.chunkKey(cx + dx, cz + dz))
+      if (chunk) chunk.dirty = true
+    }
+    this.rebuildDirtyAround(cx, cz)
+  }
+
   /** 标记世界坐标处方块所在区块为dirty (用于方块状态变更后触发重建) */
   public markBlockDirty(worldX: number, _worldY: number, worldZ: number): void {
     const cx = Math.floor(worldX / CHUNK_SIZE)

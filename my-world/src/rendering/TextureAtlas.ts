@@ -5,6 +5,7 @@ import { BlockType, BLOCK_REGISTRY } from '@/types/blocks'
 /**
  * TextureAtlas - 纹理图集
  * 将所有方块纹理打包到一张大纹理中（32×32 像素/格）
+ * 使用程序生成的 2D 平面贴图（官方图集包含 3D 等距渲染图，不适合映射到方块面）
  */
 export class TextureAtlas {
   public texture: THREE.Texture
@@ -17,6 +18,7 @@ export class TextureAtlas {
     canvas.height = ATLAS_SIZE * TEXTURE_RESOLUTION
     const ctx = canvas.getContext('2d')!
 
+    // 生成程序纹理作为唯一材质来源（所有方块使用统一的 2D 平面贴图）
     this.generateTextures(ctx)
 
     document.documentElement.style.setProperty(
@@ -29,6 +31,28 @@ export class TextureAtlas {
     this.texture.minFilter = THREE.NearestFilter
     this.texture.colorSpace = THREE.SRGBColorSpace
     this.texture.needsUpdate = true
+
+    // 所有材质使用程序生成的 2D 平面贴图，不使用官方图集
+    // （官方图集中包含一些 3D 等距渲染图，映射到方块面会导致"3D 叠加 3D"的问题）
+  }
+
+  /** 加载官方贴图并覆盖到 canvas 上 */
+  private loadOfficialAtlas(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
+    const img = new Image()
+    img.onload = () => {
+      // 将官方贴图绘制到 canvas 上，覆盖对应的程序纹理
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      // 更新 THREE 纹理
+      this.texture.needsUpdate = true
+
+      // 更新 CSS 变量（用于 UI 中的贴图预览）
+      document.documentElement.style.setProperty(
+        '--block-texture-atlas',
+        `url("${canvas.toDataURL('image/png')}")`,
+      )
+    }
+    img.src = blockAtlasUrl
   }
 
   getUV(texIndex: number): { u: number; v: number; uSize: number; vSize: number } {
@@ -408,6 +432,10 @@ export class TextureAtlas {
       F(ctx, x + 14, y + 14, 4, 2, '#c06020')
     })
 
+    // ── 24-25: 红沙/红砂岩 ──
+    draw(24, (x, y, s) => { F(ctx, x, y, s, s, '#c06030'); NF(ctx, x, y, s, s, 192, 96, 48, 30, 1, 24) })
+    draw(25, (x, y, s) => { F(ctx, x, y, s, s, '#c06030'); NF(ctx, x, y, s, s, 192, 96, 48, 20, 0.5, 25) })
+
     // ── 30-42: 下界方块 ──
     draw(30, (x, y, s) => { F(ctx, x, y, s, s, '#8b3030'); NF(ctx, x, y, s, s, 139, 48, 48, 45, 1, 30) })
     draw(31, (x, y, s) => { F(ctx, x, y, s, s, '#5b4030'); NF(ctx, x, y, s, s, 91, 64, 48, 35, 1, 31) })
@@ -634,11 +662,11 @@ export class TextureAtlas {
       })
     })
 
-    // ── 133-146: 混凝土 ──
+    // ── 133-148: 混凝土（16色，顺序与羊毛一致）──
     const concreteColors = [
       '#c8c8c8', '#c06820', '#a030a0', '#4070c0', '#c0b020', '#50b030',
-      '#c06080', '#404040', '#808080', '#2080a0', '#6030a0', '#2030a0',
-      '#603010', '#306010', '#801010', '#101010'
+      '#e070a0', '#404040', '#a0a0a0', '#808080', '#2080a0', '#6030a0',
+      '#2030a0', '#603010', '#306010', '#101010'
     ]
     concreteColors.forEach((c, i) => {
       draw(133 + i, (x, y, s) => {
@@ -649,8 +677,6 @@ export class TextureAtlas {
 
     // ── 147-155: 杂项 ──
     draw(147, (x, y, s) => { F(ctx, x, y, s, s, '#a0705a'); NF(ctx, x, y, s, s, 160, 112, 90, 20, 0.5, 147) })
-    draw(148, (x, y, s) => { F(ctx, x, y, s, s, '#c06030'); NF(ctx, x, y, s, s, 192, 96, 48, 30, 1, 148) })
-    draw(149, (x, y, s) => { F(ctx, x, y, s, s, '#c06030'); NF(ctx, x, y, s, s, 192, 96, 48, 20, 0.5, 149) })
     draw(150, (x, y, s) => {
       F(ctx, x, y, s, s, '#6b1010'); NF(ctx, x, y, s, s, 107, 16, 16, 20, 0.5, 150)
       for (let py = 0; py < s; py += 8) F(ctx, x, y + py, s, 1, '#4b0000')
@@ -818,6 +844,32 @@ export class TextureAtlas {
       F(ctx, x + 8, y + 14, s - 16, 8, '#707981')
       F(ctx, x + 12, y + 22, 8, 10, '#707981')
     })
+    // ── 204-207: 红石火把与拉杆 ──
+    draw(204, (x, y, s) => {
+      // 未充能红石火把: 暗红杆 + 灰暗灯头
+      F(ctx, x + 13, y + 8, 6, 20, '#5a1e12')
+      F(ctx, x + 11, y + 2, 10, 9, '#8c3020')
+      F(ctx, x + 13, y + 4, 6, 5, '#b04838')
+    })
+    draw(205, (x, y, s) => {
+      // 充能红石火把: 亮红杆 + 发光灯头
+      F(ctx, x + 13, y + 8, 6, 20, '#8c1a10')
+      F(ctx, x + 11, y + 2, 10, 9, '#ff5040')
+      F(ctx, x + 13, y + 4, 6, 5, '#ffb0a0')
+    })
+    draw(206, (x, y, s) => {
+      // 拉杆 (关闭): 圆石底 + 灰杆
+      F(ctx, x, y, s, s, '#8a857d'); NF(ctx, x, y, s, s, 138, 133, 125, 20, 0.4, 206)
+      F(ctx, x + 6, y + 6, 20, 6, '#5b5548')
+      F(ctx, x + 6, y + 18, 20, 6, '#5b5548')
+    })
+    draw(207, (x, y, s) => {
+      // 拉杆 (开启): 圆石底 + 红石亮杆
+      F(ctx, x, y, s, s, '#8a857d'); NF(ctx, x, y, s, s, 138, 133, 125, 20, 0.4, 207)
+      F(ctx, x + 6, y + 6, 20, 6, '#e02018')
+      F(ctx, x + 6, y + 18, 20, 6, '#e02018')
+      F(ctx, x + 6, y + 12, 20, 6, '#ffb0a0')
+    })
 
     // ── 210-217: 指令方块 ──
     draw(210, (x, y, s) => {
@@ -954,6 +1006,66 @@ export class TextureAtlas {
       F(ctx, x, y + s - 2, s, 2, '#4a4a4a')
       F(ctx, x, y, 2, s, '#4a4a4a')
       F(ctx, x + s - 2, y, 2, s, '#4a4a4a')
+    })
+
+    // ── 223-238: 染色陶瓦（16色）──
+    const terracottaColors = [
+      '#c8c8c8', '#c06820', '#a030a0', '#4070c0', '#c0b020', '#50b030',
+      '#e070a0', '#404040', '#a0a0a0', '#808080', '#2080a0', '#6030a0',
+      '#2030a0', '#603010', '#306010', '#101010'
+    ]
+    terracottaColors.forEach((c, i) => {
+      draw(223 + i, (x, y, s) => {
+        const r = parseInt(c.slice(1, 3), 16)
+        const g = parseInt(c.slice(3, 5), 16)
+        const b = parseInt(c.slice(5, 7), 16)
+        // 陶瓦基底色（偏土质）
+        const tr = Math.round(r * 0.65 + 160 * 0.35)
+        const tg = Math.round(g * 0.65 + 112 * 0.35)
+        const tb = Math.round(b * 0.65 + 90 * 0.35)
+        F(ctx, x, y, s, s, `rgb(${tr},${tg},${tb})`)
+        NF(ctx, x, y, s, s, tr, tg, tb, 18, 0.5, 223 + i)
+        // 裂纹纹理
+        ctx.strokeStyle = `rgba(${Math.max(0, tr - 40)},${Math.max(0, tg - 40)},${Math.max(0, tb - 40)},0.4)`
+        ctx.lineWidth = 1
+        for (let j = 0; j < 3; j++) {
+          const sx = x + Math.floor(H(j, 0, 223 + i) * s)
+          const sy = y + Math.floor(H(0, j, 223 + i) * s)
+          ctx.beginPath()
+          ctx.moveTo(sx, sy)
+          ctx.lineTo(sx + Math.floor(H(j, j, 223 + i) * 8) - 4, sy + Math.floor(H(j + 1, 0, 223 + i) * 8) - 4)
+          ctx.stroke()
+        }
+      })
+    })
+
+    // ── 239-254: 染色玻璃（16色）──
+    const glassColors = [
+      '#e8e8e8', '#e08040', '#b040c0', '#6090e0', '#e0d040', '#60d040',
+      '#e070a0', '#505050', '#a0a0a0', '#3090a0', '#8040b0', '#3040b0',
+      '#704020', '#407020', '#a03030', '#1a1a1a'
+    ]
+    glassColors.forEach((c, i) => {
+      draw(239 + i, (x, y, s) => {
+        const r = parseInt(c.slice(1, 3), 16)
+        const g = parseInt(c.slice(3, 5), 16)
+        const b = parseInt(c.slice(5, 7), 16)
+        // 半透明有色玻璃
+        ctx.fillStyle = `rgba(${r},${g},${b},0.45)`
+        ctx.fillRect(x, y, s, s)
+        // 浅色边框
+        ctx.strokeStyle = `rgba(${Math.min(255, r + 60)},${Math.min(255, g + 60)},${Math.min(255, b + 60)},0.7)`
+        ctx.lineWidth = 1
+        ctx.strokeRect(x + 1, y + 1, s - 2, s - 2)
+        // 十字分格（玻璃窗样式）
+        ctx.strokeStyle = `rgba(${Math.min(255, r + 40)},${Math.min(255, g + 40)},${Math.min(255, b + 40)},0.5)`
+        ctx.beginPath()
+        ctx.moveTo(x + Math.floor(s / 2), y + 2)
+        ctx.lineTo(x + Math.floor(s / 2), y + s - 2)
+        ctx.moveTo(x + 2, y + Math.floor(s / 2))
+        ctx.lineTo(x + s - 2, y + Math.floor(s / 2))
+        ctx.stroke()
+      })
     })
   }
 

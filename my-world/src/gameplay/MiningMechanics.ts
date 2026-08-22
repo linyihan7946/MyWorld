@@ -86,6 +86,9 @@ const HAND_MINEABLE = new Set<BlockType>([
   BlockType.RAIL, BlockType.POWERED_RAIL, BlockType.DETECTOR_RAIL, BlockType.ACTIVATOR_RAIL,
   // 红石元件 (简单空手拆)
   BlockType.REDSTONE_DUST, BlockType.REPEATER, BlockType.COMPARATOR,
+  BlockType.LEVER, BlockType.LEVER_ON,
+  BlockType.REDSTONE_TORCH, BlockType.REDSTONE_TORCH_ON,
+  BlockType.OBSERVER,
   // 门 (铁门仍需工具)
   BlockType.IRON_DOOR, BlockType.IRON_TRAPDOOR,
   // 压力板
@@ -414,6 +417,10 @@ const MC_HARDNESS: Partial<Record<BlockType, number>> = {
   [BlockType.OBSERVER]: 3.0,
   [BlockType.HOPPER]: 3.0,
   [BlockType.PISTON_HEAD]: 1.5,
+  [BlockType.LEVER]: 0,
+  [BlockType.LEVER_ON]: 0,
+  [BlockType.REDSTONE_TORCH]: 0,
+  [BlockType.REDSTONE_TORCH_ON]: 0,
 
   // === 羊毛 (需要任何工具，但剪刀最快) ===
   [BlockType.WHITE_WOOL]: 0.8,

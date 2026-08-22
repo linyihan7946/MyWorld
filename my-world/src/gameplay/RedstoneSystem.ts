@@ -4,6 +4,8 @@ import { getItemDefinition } from '@/types/items'
 import { ChunkManager } from '@/world/ChunkManager'
 import { EventBus } from '@/core/EventBus'
 import { containerPositionKey, useContainerStore } from '@/ui/stores/containerStore'
+import { getBlockStateValue } from '@/gameplay/BlockStateSystem'
+import { dustPowerRegistry } from '@/gameplay/redstonePower'
 
 type Direction = { x: number; y: number; z: number }
 
@@ -31,7 +33,11 @@ const HORIZONTAL: Direction[] = DIRECTIONS.filter(direction => direction.y === 0
 const REDSTONE_TYPES = new Set<BlockType>([
   BlockType.REDSTONE_DUST, BlockType.PISTON, BlockType.STICKY_PISTON,
   BlockType.REPEATER, BlockType.COMPARATOR, BlockType.OBSERVER, BlockType.HOPPER,
+  BlockType.REDSTONE_TORCH, BlockType.REDSTONE_TORCH_ON,
 ])
+
+/** 红石火把的两种状态 (亮/灭) */
+const TORCH_TYPES = new Set<BlockType>([BlockType.REDSTONE_TORCH, BlockType.REDSTONE_TORCH_ON])
 
 /**
  * Deterministic redstone simulation for the block engine. It follows the same
@@ -58,6 +64,10 @@ export class RedstoneSystem {
 
     let facing = this.normalizeDirection(data.facing ?? new THREE.Vector3(0, 0, 1))
     if (data.blockType === BlockType.HOPPER && data.attachedFace) {
+      facing = this.normalizeDirection(this.negate(data.attachedFace), true)
+    }
+    // 红石火把记录附着方向 (火把 → 支撑方块), 用于熄灭判定与供电排除
+    if (TORCH_TYPES.has(data.blockType) && data.attachedFace) {
       facing = this.normalizeDirection(this.negate(data.attachedFace), true)
     }
     this.states.set(this.key(position), this.createState(data.blockType, facing))
@@ -137,6 +147,7 @@ export class RedstoneSystem {
     this.updateObservers(changesForObservers)
     this.rebuildDustPower()
     this.updateRepeatersAndComparators()
+    this.updateTorches()
     this.rebuildDustPower()
     this.updatePistons()
     // Pistons may have moved blocks; let observers react to the movement.
@@ -159,6 +170,8 @@ export class RedstoneSystem {
       const position = this.parseKey(key)
       const actual = this.chunks.getBlock(position.x, position.y, position.z)
       if (actual === state.type) continue
+      // 红石火把在充能/未充能之间切换, 两种方块类型都视为存在
+      if (TORCH_TYPES.has(state.type) && TORCH_TYPES.has(actual)) continue
 
       // Pistons may have been pushed by another piston. Check the head position.
       if (this.isPiston(state.type)) {
@@ -220,6 +233,30 @@ export class RedstoneSystem {
         }
       }
     }
+
+    // 同步共享注册表 (渲染用), 能量变化时重建所在区块网格
+    const changed = new Set<string>()
+    for (const key of dustPowerRegistry.keys()) {
+      if (!this.dustPower.has(key)) changed.add(key)
+    }
+    for (const [key, power] of this.dustPower) {
+      if (dustPowerRegistry.get(key) !== power) changed.add(key)
+    }
+    dustPowerRegistry.clear()
+    for (const [key, power] of this.dustPower) dustPowerRegistry.set(key, power)
+
+    if (changed.size > 0) {
+      const rebuiltChunks = new Set<string>()
+      for (const key of changed) {
+        const position = this.parseKey(key)
+        const cx = Math.floor(position.x / 16)
+        const cz = Math.floor(position.z / 16)
+        const chunkKey = `${cx},${cz}`
+        if (rebuiltChunks.has(chunkKey)) continue
+        rebuiltChunks.add(chunkKey)
+        this.chunks.rebuildMeshesAt(cx, cz)
+      }
+    }
   }
 
   private updateRepeatersAndComparators(): void {
@@ -263,6 +300,43 @@ export class RedstoneSystem {
         state.outputPower = output
         state.powered = output > 0
       }
+    }
+  }
+
+  /**
+   * 红石火把: 支撑方块被供电时熄灭, 否则点亮 (1 tick 延迟)。
+   * 火把本身不为其支撑方块供电, 因此不会自锁。
+   */
+  private updateTorches(): void {
+    for (const [key, state] of this.states) {
+      if (!TORCH_TYPES.has(state.type)) continue
+      const position = this.parseKey(key)
+      const support = this.add(position, state.facing)
+      // 支撑方块从其他方向收到的信号 (火把对支撑方块的供电已被排除)
+      let supportPower = 0
+      for (const direction of DIRECTIONS) {
+        const neighbor = this.add(support, direction)
+        if (this.key(neighbor) === key) continue
+        supportPower = Math.max(supportPower, this.signalDeliveredFrom(neighbor, support))
+      }
+      const shouldBeOn = supportPower <= 0
+
+      if (shouldBeOn === state.powered) {
+        state.pendingPower = null
+        continue
+      }
+      if (state.pendingPower !== shouldBeOn) {
+        state.pendingPower = shouldBeOn
+        state.transitionAt = this.clock + 0.1
+        continue
+      }
+      if (this.clock < state.transitionAt) continue
+
+      const newType = shouldBeOn ? BlockType.REDSTONE_TORCH_ON : BlockType.REDSTONE_TORCH
+      this.setBlock(position, newType)
+      state.type = newType
+      state.powered = shouldBeOn
+      state.pendingPower = null
     }
   }
 
@@ -362,10 +436,24 @@ export class RedstoneSystem {
     return power
   }
 
+  /** 按钮/压力板被按下时视为红石电源 */
+  private isPressedPower(position: Direction): boolean {
+    const type = this.chunks.getBlock(position.x, position.y, position.z) as BlockType
+    if (type === BlockType.OAK_BUTTON || type === BlockType.STONE_BUTTON) {
+      return getBlockStateValue(position.x, position.y, position.z, 'powered', false) as boolean
+    }
+    if (type >= BlockType.OAK_PRESSURE_PLATE && type <= BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE) {
+      return getBlockStateValue(position.x, position.y, position.z, 'powered', false) as boolean
+    }
+    return false
+  }
+
   private signalAt(position: Direction): number {
     const type = this.chunks.getBlock(position.x, position.y, position.z) as BlockType
     if (type === BlockType.REDSTONE_BLOCK) return 15
     if (type === BlockType.LEVER_ON) return 15
+    if (type === BlockType.REDSTONE_TORCH_ON) return 15
+    if (this.isPressedPower(position)) return 15
     if (type === BlockType.REDSTONE_DUST) return this.dustPower.get(this.key(position)) ?? 0
     return this.states.get(this.key(position))?.outputPower ?? 0
   }
@@ -374,6 +462,13 @@ export class RedstoneSystem {
     const type = this.chunks.getBlock(source.x, source.y, source.z) as BlockType
     if (type === BlockType.REDSTONE_BLOCK) return 15
     if (type === BlockType.LEVER_ON) return 15
+    if (type === BlockType.REDSTONE_TORCH_ON) {
+      // 火把不为自己的支撑方块供电 (这是经典的短路/反向器基础)
+      const state = this.states.get(this.key(source))
+      if (state && this.key(this.add(source, state.facing)) === this.key(target)) return 0
+      return 15
+    }
+    if (this.isPressedPower(source)) return 15
     if (type === BlockType.REDSTONE_DUST) return this.dustPower.get(this.key(source)) ?? 0
     const state = this.states.get(this.key(source))
     if (!state || state.outputPower <= 0) return 0

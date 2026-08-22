@@ -269,7 +269,7 @@ export const RECIPES: Recipe[] = [
   { type: 'shaped', pattern: ['CCC', 'CCC', 'CCC'], keys: { C: 'copper_ingot' }, result: { item: 'copper_block', count: 1 } },
   { type: 'shaped', pattern: ['EEE', 'EEE', 'EEE'], keys: { E: 'emerald' }, result: { item: 'emerald_block', count: 1 } },
   { type: 'shaped', pattern: ['LLL', 'LLL', 'LLL'], keys: { L: 'lapis_lazuli' }, result: { item: 'lapis_block', count: 1 } },
-  { type: 'shaped', pattern: ['RRR', 'RRR', 'RRR'], keys: { R: 'redstone' }, result: { item: 'redstone_block', count: 1 } },
+  { type: 'shaped', pattern: ['RRR', 'RRR', 'RRR'], keys: { R: 'redstone_dust' }, result: { item: 'redstone_block', count: 1 } },
   { type: 'shaped', pattern: ['QQQ', 'QQQ', 'QQQ'], keys: { Q: 'quartz' }, result: { item: 'quartz_block', count: 1 } },
   { type: 'shaped', pattern: ['SSS', 'SSS', 'SSS'], keys: { S: 'steel_ingot' }, result: { item: 'steel_block', count: 1 } },
 
@@ -281,7 +281,7 @@ export const RECIPES: Recipe[] = [
   { type: 'shapeless', ingredients: ['copper_block'], result: { item: 'copper_ingot', count: 9 } },
   { type: 'shapeless', ingredients: ['emerald_block'], result: { item: 'emerald', count: 9 } },
   { type: 'shapeless', ingredients: ['lapis_block'], result: { item: 'lapis_lazuli', count: 9 } },
-  { type: 'shapeless', ingredients: ['redstone_block'], result: { item: 'redstone', count: 9 } },
+  { type: 'shapeless', ingredients: ['redstone_block'], result: { item: 'redstone_dust', count: 9 } },
   { type: 'shapeless', ingredients: ['quartz_block'], result: { item: 'quartz', count: 9 } },
   { type: 'shapeless', ingredients: ['steel_block'], result: { item: 'steel_ingot', count: 9 } },
 
@@ -389,31 +389,34 @@ export const RECIPES: Recipe[] = [
   // ==========================================
   // === 门 ===
   // ==========================================
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'oak_planks' }, result: { item: 'oak_planks', count: 3 } },
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'spruce_planks' }, result: { item: 'spruce_planks', count: 3 } },
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'birch_planks' }, result: { item: 'birch_planks', count: 3 } },
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'jungle_planks' }, result: { item: 'jungle_planks', count: 3 } },
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'acacia_planks' }, result: { item: 'acacia_planks', count: 3 } },
-  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'dark_oak_planks' }, result: { item: 'dark_oak_planks', count: 3 } },
-  { type: 'shaped', pattern: ['II', 'II', 'II'], keys: { I: 'iron_ingot' }, result: { item: 'iron_ingot', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'oak_planks' }, result: { item: 'oak_door', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'spruce_planks' }, result: { item: 'spruce_door', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'birch_planks' }, result: { item: 'birch_door', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'jungle_planks' }, result: { item: 'jungle_door', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'acacia_planks' }, result: { item: 'acacia_door', count: 3 } },
+  { type: 'shaped', pattern: ['PP', 'PP', 'PP'], keys: { P: 'dark_oak_planks' }, result: { item: 'dark_oak_door', count: 3 } },
+  { type: 'shaped', pattern: ['II', 'II', 'II'], keys: { I: 'iron_ingot' }, result: { item: 'iron_door', count: 3 } },
 
   // ==========================================
   // === 活板门 ===
   // ==========================================
-  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'oak_planks' }, result: { item: 'oak_planks', count: 2 } },
-  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'spruce_planks' }, result: { item: 'spruce_planks', count: 2 } },
-  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'birch_planks' }, result: { item: 'birch_planks', count: 2 } },
-  { type: 'shaped', pattern: ['III'], keys: { I: 'iron_ingot' }, result: { item: 'iron_ingot', count: 1 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'oak_planks' }, result: { item: 'oak_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'spruce_planks' }, result: { item: 'spruce_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'birch_planks' }, result: { item: 'birch_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'jungle_planks' }, result: { item: 'jungle_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'acacia_planks' }, result: { item: 'acacia_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['PPP', 'PPP'], keys: { P: 'dark_oak_planks' }, result: { item: 'dark_oak_trapdoor', count: 2 } },
+  { type: 'shaped', pattern: ['III'], keys: { I: 'iron_ingot' }, result: { item: 'iron_trapdoor', count: 1 } },
 
   // ==========================================
   // === 按钮和压力板 ===
   // ==========================================
-  { type: 'shaped', pattern: ['P'], keys: { P: 'oak_planks' }, result: { item: 'oak_planks', count: 1 } },
-  { type: 'shaped', pattern: ['S'], keys: { S: 'stone' }, result: { item: 'stone', count: 1 } },
-  { type: 'shaped', pattern: ['PP'], keys: { P: 'oak_planks' }, result: { item: 'oak_planks', count: 1 } },
-  { type: 'shaped', pattern: ['SS'], keys: { S: 'stone' }, result: { item: 'stone', count: 1 } },
-  { type: 'shaped', pattern: ['GG'], keys: { G: 'gold_ingot' }, result: { item: 'gold_ingot', count: 1 } },
-  { type: 'shaped', pattern: ['II'], keys: { I: 'iron_ingot' }, result: { item: 'iron_ingot', count: 1 } },
+  { type: 'shaped', pattern: ['P'], keys: { P: 'oak_planks' }, result: { item: 'oak_button', count: 1 } },
+  { type: 'shaped', pattern: ['S'], keys: { S: 'stone' }, result: { item: 'stone_button', count: 1 } },
+  { type: 'shaped', pattern: ['PP'], keys: { P: 'oak_planks' }, result: { item: 'oak_pressure_plate', count: 1 } },
+  { type: 'shaped', pattern: ['SS'], keys: { S: 'stone' }, result: { item: 'stone_pressure_plate', count: 1 } },
+  { type: 'shaped', pattern: ['GG'], keys: { G: 'gold_ingot' }, result: { item: 'light_weighted_pressure_plate', count: 1 } },
+  { type: 'shaped', pattern: ['II'], keys: { I: 'iron_ingot' }, result: { item: 'heavy_weighted_pressure_plate', count: 1 } },
 
   // ==========================================
   // === 食物 ===
@@ -458,10 +461,10 @@ export const RECIPES: Recipe[] = [
   { type: 'shaped', pattern: ['  S', ' ST', 'S T'], keys: { S: 'stick', T: 'string' }, result: { item: 'fishing_rod', count: 1 } },
 
   // 指南针
-  { type: 'shaped', pattern: [' I ', 'IRI', ' I '], keys: { I: 'iron_ingot', R: 'redstone' }, result: { item: 'compass', count: 1 } },
+  { type: 'shaped', pattern: [' I ', 'IRI', ' I '], keys: { I: 'iron_ingot', R: 'redstone_dust' }, result: { item: 'compass', count: 1 } },
 
   // 时钟
-  { type: 'shaped', pattern: [' G ', 'GRG', ' G '], keys: { G: 'gold_ingot', R: 'redstone' }, result: { item: 'clock', count: 1 } },
+  { type: 'shaped', pattern: [' G ', 'GRG', ' G '], keys: { G: 'gold_ingot', R: 'redstone_dust' }, result: { item: 'clock', count: 1 } },
 
   // 桶
   { type: 'shaped', pattern: ['I I', ' I '], keys: { I: 'iron_ingot' }, result: { item: 'bucket', count: 1 } },
@@ -519,7 +522,30 @@ export const RECIPES: Recipe[] = [
   // ==========================================
   // === 铁轨 ===
   // ==========================================
-  { type: 'shaped', pattern: ['I I', 'ISI', 'I I'], keys: { I: 'iron_ingot', S: 'stick' }, result: { item: 'iron_ingot', count: 16 } },
+  { type: 'shaped', pattern: ['I I', 'ISI', 'I I'], keys: { I: 'iron_ingot', S: 'stick' }, result: { item: 'rail', count: 16 } },
+  { type: 'shaped', pattern: ['G G', 'GSG', 'GRG'], keys: { G: 'gold_ingot', S: 'stick', R: 'redstone_dust' }, result: { item: 'powered_rail', count: 6 } },
+  { type: 'shaped', pattern: ['I I', 'ISI', 'IRI'], keys: { I: 'iron_ingot', S: 'stone_pressure_plate', R: 'redstone_dust' }, result: { item: 'detector_rail', count: 6 } },
+  { type: 'shaped', pattern: ['I I', 'ISI', 'IRI'], keys: { I: 'iron_ingot', S: 'stick', R: 'redstone_torch' }, result: { item: 'activator_rail', count: 6 } },
+
+  // ==========================================
+  // === 红石组件 ===
+  // ==========================================
+  // 红石火把
+  { type: 'shaped', pattern: ['R', 'S'], keys: { R: 'redstone_dust', S: 'stick' }, result: { item: 'redstone_torch', count: 1 } },
+  // 拉杆
+  { type: 'shaped', pattern: ['S', 'C'], keys: { S: 'stick', C: 'cobblestone' }, result: { item: 'lever', count: 1 } },
+  // 中继器
+  { type: 'shaped', pattern: ['T T', 'TTT', 'SSS'], keys: { T: 'redstone_torch', S: 'stone' }, result: { item: 'repeater', count: 1 } },
+  // 比较器
+  { type: 'shaped', pattern: [' T ', 'TRT', 'SSS'], keys: { T: 'redstone_torch', R: 'quartz', S: 'stone' }, result: { item: 'comparator', count: 1 } },
+  // 活塞
+  { type: 'shaped', pattern: ['PPP', 'CIC', 'CRC'], keys: { P: 'oak_planks', C: 'cobblestone', I: 'iron_ingot', R: 'redstone_dust' }, result: { item: 'piston', count: 1 } },
+  // 粘性活塞
+  { type: 'shapeless', ingredients: ['piston', 'slime_ball'], result: { item: 'sticky_piston', count: 1 } },
+  // 侦测器
+  { type: 'shaped', pattern: ['CCC', 'RRQ', 'CCC'], keys: { C: 'cobblestone', R: 'redstone_dust', Q: 'quartz' }, result: { item: 'observer', count: 1 } },
+  // 漏斗
+  { type: 'shaped', pattern: ['I I', 'ICI', ' I '], keys: { I: 'iron_ingot', C: 'chest' }, result: { item: 'hopper', count: 1 } },
 ]
 
 /**

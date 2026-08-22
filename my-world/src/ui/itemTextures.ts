@@ -938,11 +938,6 @@ function generateIcon(itemId: string): string | null {
     return generateDataUrl(GEM_TPL, gemColors[itemId])
   }
 
-  // ── Materials: redstone ──
-  if (itemId === 'redstone') {
-    return generateDataUrl(GEM_TPL, { H: '#F04040', M: '#E02020', S: '#A01010' })
-  }
-
   // ── Materials: simple powder / dots ──
   const powderColors: Record<string, PixelMap> = {
     glowstone_dust: { H: '#FCE880', M: '#FCDB4D', S: '#C0A030' },

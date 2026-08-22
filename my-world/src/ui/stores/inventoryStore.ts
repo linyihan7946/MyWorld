@@ -62,6 +62,9 @@ export const useInventoryStore = defineStore('inventory', () => {
   const selectedSlot = ref(0)
   const showInventory = ref(false)
 
+  /** 待丢弃的物品（由引擎每帧检查并生成掉落物） */
+  const pendingDrop = ref<{ item: string; count: number; blockType?: BlockType } | null>(null)
+
   /** Whether the player is wearing a full set of steel armor. */
   const hasFullSteelArmor = computed(() =>
     armor.value.every(s => s.item?.startsWith('steel_'))
@@ -71,21 +74,71 @@ export const useInventoryStore = defineStore('inventory', () => {
     selectedSlot.value = Math.max(0, Math.min(8, slot))
   }
 
-  /** 切换到创造模式：填满快捷栏 */
+  /** 切换到创造模式：物品栏保持为空，物品从创造目录中选取 */
   function setCreativeInventory(): void {
-    for (let i = 0; i < 9; i++) {
-      hotbar.value[i] = {
-        item: CREATIVE_BLOCKS[i].item,
-        count: 64,
-        blockType: CREATIVE_BLOCKS[i].blockType,
-      }
-    }
+    // 创造模式物品栏为空，玩家通过打开背包(E)从创造分类中选取物品
   }
 
   /** 切换到生存模式：清空背包 */
   function setSurvivalInventory(): void {
     for (let i = 0; i < 9; i++) hotbar.value[i] = emptySlot()
     for (let i = 0; i < 27; i++) mainInventory.value[i] = emptySlot()
+    for (let i = 0; i < 4; i++) armor.value[i] = emptyArmorSlot(armor.value[i]?.slotType || (['helmet', 'chestplate', 'leggings', 'boots'] as const)[i])
+    selectedSlot.value = 0
+  }
+
+  // === 切换游戏模式时保存/恢复物品栏 ===
+  const savedSurvivalInventory = ref<{
+    hotbar: InventorySlot[]
+    mainInventory: InventorySlot[]
+    armor: ArmorSlot[]
+    selectedSlot: number
+  } | null>(null)
+
+  /** 保存当前生存模式物品栏 */
+  function saveSurvivalInventory(): void {
+    savedSurvivalInventory.value = {
+      hotbar: hotbar.value.map(s => ({ ...s })),
+      mainInventory: mainInventory.value.map(s => ({ ...s })),
+      armor: armor.value.map(s => ({ ...s })),
+      selectedSlot: selectedSlot.value,
+    }
+  }
+
+  /** 恢复之前保存的生存模式物品栏 */
+  function restoreSurvivalInventory(): void {
+    if (savedSurvivalInventory.value) {
+      for (let i = 0; i < 9; i++) {
+        hotbar.value[i] = { ...savedSurvivalInventory.value.hotbar[i] }
+      }
+      for (let i = 0; i < 27; i++) {
+        mainInventory.value[i] = { ...savedSurvivalInventory.value.mainInventory[i] }
+      }
+      for (let i = 0; i < 4; i++) {
+        armor.value[i] = { ...savedSurvivalInventory.value.armor[i] }
+      }
+      selectedSlot.value = savedSurvivalInventory.value.selectedSlot
+    }
+  }
+
+  /** 丢弃指定物品栏格子中的物品（返回被丢弃的物品信息） */
+  function dropFromSlot(slotIndex: number, fromHotbar: boolean): { item: string; count: number; blockType?: BlockType } | null {
+    const slot = fromHotbar ? hotbar.value[slotIndex] : mainInventory.value[slotIndex]
+    if (!slot || !slot.item || slot.count <= 0) return null
+
+    const dropped = {
+      item: slot.item,
+      count: 1,
+      blockType: slot.blockType,
+    }
+    slot.count--
+    if (slot.count <= 0) {
+      slot.item = null
+      slot.blockType = undefined
+      slot.durabilityDamage = undefined
+      slot.enchantments = undefined
+    }
+    return dropped
   }
 
   function addToHotbar(blockType: BlockType, name: string, count = 1): boolean {
@@ -197,5 +250,5 @@ export const useInventoryStore = defineStore('inventory', () => {
     return COMMAND_EXCLUSIVE_BLOCKS
   }
 
-  return { hotbar, mainInventory, armor, selectedSlot, showInventory, selectSlot, addToHotbar, addItem, removeFromSelected, setCreativeInventory, setSurvivalInventory, getArmorDefense, equipArmor, hasFullSteelArmor, getCommandExclusiveBlocks }
+  return { hotbar, mainInventory, armor, selectedSlot, showInventory, pendingDrop, selectSlot, addToHotbar, addItem, removeFromSelected, setCreativeInventory, setSurvivalInventory, getArmorDefense, equipArmor, hasFullSteelArmor, getCommandExclusiveBlocks, saveSurvivalInventory, restoreSurvivalInventory, dropFromSlot }
 })

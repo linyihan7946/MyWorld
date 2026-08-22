@@ -82,6 +82,49 @@ export class GameAudio {
     osc.stop(now + 0.1)
   }
 
+  /** TNT 爆炸 */
+  playExplosion(): void {
+    if (!this.enabled || !this.ctx || !this.masterGain) return
+    const now = this.ctx.currentTime
+
+    // 巨大噪声爆发
+    const buf = this.createNoiseBuffer(0.6)
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+
+    const filter = this.ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.setValueAtTime(1200, now)
+    filter.frequency.exponentialRampToValueAtTime(80, now + 0.6)
+
+    const gain = this.ctx.createGain()
+    gain.gain.setValueAtTime(0, now)
+    gain.gain.linearRampToValueAtTime(0.9, now + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6)
+
+    src.connect(filter)
+    filter.connect(gain)
+    gain.connect(this.masterGain!)
+    src.start(now)
+    src.stop(now + 0.6)
+
+    // 低频冲击
+    const osc = this.ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(90, now)
+    osc.frequency.exponentialRampToValueAtTime(25, now + 0.4)
+
+    const oscGain = this.ctx.createGain()
+    oscGain.gain.setValueAtTime(0, now)
+    oscGain.gain.linearRampToValueAtTime(0.8, now + 0.01)
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
+
+    osc.connect(oscGain)
+    oscGain.connect(this.masterGain!)
+    osc.start(now)
+    osc.stop(now + 0.45)
+  }
+
   /** 放置方块 */
   playBlockPlace(type: 'stone' | 'wood' | 'dirt' | 'sand' | 'glass' | 'metal' = 'stone'): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return

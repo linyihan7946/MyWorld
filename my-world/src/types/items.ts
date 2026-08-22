@@ -170,6 +170,7 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   observer: { id: 'observer', name: '侦测器', type: 'block', stackSize: 64 },
   lever: { id: 'lever', name: '拉杆', type: 'block', stackSize: 64 },
   hopper: { id: 'hopper', name: '漏斗', type: 'block', stackSize: 64 },
+  redstone_torch: { id: 'redstone_torch', name: '红石火把', type: 'block', stackSize: 64 },
 
   // === Materials ===
   stick: { id: 'stick', name: '木棍', type: 'material', stackSize: 64 },
@@ -183,7 +184,6 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   diamond: { id: 'diamond', name: '钻石', type: 'material', stackSize: 64 },
   emerald: { id: 'emerald', name: '绿宝石', type: 'material', stackSize: 64 },
   lapis_lazuli: { id: 'lapis_lazuli', name: '青金石', type: 'material', stackSize: 64 },
-  redstone: { id: 'redstone', name: '红石粉', type: 'material', stackSize: 64 },
   quartz: { id: 'quartz', name: '下界石英', type: 'material', stackSize: 64 },
   amethyst_shard: { id: 'amethyst_shard', name: '紫水晶碎片', type: 'material', stackSize: 64 },
   flint: { id: 'flint', name: '燧石', type: 'material', stackSize: 64 },
@@ -401,6 +401,36 @@ export const ITEM_REGISTRY: Record<string, ItemDefinition> = {
   lantern: { id: 'lantern', name: '灯笼', type: 'block', stackSize: 64 },
   soul_lantern: { id: 'soul_lantern', name: '灵魂灯笼', type: 'block', stackSize: 64 },
   ladder: { id: 'ladder', name: '梯子', type: 'block', stackSize: 64 },
+
+  // === Doors & Trapdoors ===
+  oak_door: { id: 'oak_door', name: '橡木门', type: 'block', stackSize: 64 },
+  spruce_door: { id: 'spruce_door', name: '云杉木门', type: 'block', stackSize: 64 },
+  birch_door: { id: 'birch_door', name: '白桦木门', type: 'block', stackSize: 64 },
+  jungle_door: { id: 'jungle_door', name: '丛林木门', type: 'block', stackSize: 64 },
+  acacia_door: { id: 'acacia_door', name: '金合欢木门', type: 'block', stackSize: 64 },
+  dark_oak_door: { id: 'dark_oak_door', name: '深色橡木门', type: 'block', stackSize: 64 },
+  iron_door: { id: 'iron_door', name: '铁门', type: 'block', stackSize: 64 },
+  oak_trapdoor: { id: 'oak_trapdoor', name: '橡木活板门', type: 'block', stackSize: 64 },
+  spruce_trapdoor: { id: 'spruce_trapdoor', name: '云杉木活板门', type: 'block', stackSize: 64 },
+  birch_trapdoor: { id: 'birch_trapdoor', name: '白桦木活板门', type: 'block', stackSize: 64 },
+  jungle_trapdoor: { id: 'jungle_trapdoor', name: '丛林木活板门', type: 'block', stackSize: 64 },
+  acacia_trapdoor: { id: 'acacia_trapdoor', name: '金合欢木活板门', type: 'block', stackSize: 64 },
+  dark_oak_trapdoor: { id: 'dark_oak_trapdoor', name: '深色橡木活板门', type: 'block', stackSize: 64 },
+  iron_trapdoor: { id: 'iron_trapdoor', name: '铁活板门', type: 'block', stackSize: 64 },
+
+  // === Buttons & Pressure Plates ===
+  oak_button: { id: 'oak_button', name: '橡木按钮', type: 'block', stackSize: 64 },
+  stone_button: { id: 'stone_button', name: '石头按钮', type: 'block', stackSize: 64 },
+  oak_pressure_plate: { id: 'oak_pressure_plate', name: '橡木压力板', type: 'block', stackSize: 64 },
+  stone_pressure_plate: { id: 'stone_pressure_plate', name: '石头压力板', type: 'block', stackSize: 64 },
+  light_weighted_pressure_plate: { id: 'light_weighted_pressure_plate', name: '轻质测重压力板', type: 'block', stackSize: 64 },
+  heavy_weighted_pressure_plate: { id: 'heavy_weighted_pressure_plate', name: '重质测重压力板', type: 'block', stackSize: 64 },
+
+  // === Rails ===
+  rail: { id: 'rail', name: '铁轨', type: 'block', stackSize: 64 },
+  powered_rail: { id: 'powered_rail', name: '充能铁轨', type: 'block', stackSize: 64 },
+  detector_rail: { id: 'detector_rail', name: '探测铁轨', type: 'block', stackSize: 64 },
+  activator_rail: { id: 'activator_rail', name: '激活铁轨', type: 'block', stackSize: 64 },
 
   // === 指令专属物品 (创造模式+作弊) ===
   command_block: { id: 'command_block', name: '命令方块', type: 'block', stackSize: 64 },

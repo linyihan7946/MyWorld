@@ -36,27 +36,27 @@
       <span class="time-badge">{{ formattedTime }} · {{ isNight ? '夜晚' : '白天' }}</span>
     </div>
 
-    <!-- Health bar (survival only) -->
+    <!-- Oxygen bar (underwater) -->
+    <div v-if="playerStore.isUnderwater && playerStore.gameMode === 'survival'" class="oxygen-bar">
+      <div v-for="i in playerStore.maxOxygen" :key="i" class="bubble" :class="{ full: i <= playerStore.oxygen }">○</div>
+    </div>
+
+    <!-- Health bar (survival only) — 物品栏左侧 -->
     <div v-if="playerStore.gameMode === 'survival'" class="health-bar">
       <div v-for="i in 10" :key="i" class="heart" :class="{ full: i <= Math.ceil(playerStore.health / 2) }">♥</div>
     </div>
 
-    <!-- Food bar (survival only) -->
+    <!-- Food bar (survival only) — 物品栏右侧 -->
     <div v-if="playerStore.gameMode === 'survival'" class="food-bar">
       <div v-for="i in 10" :key="i" class="drumstick" :class="{ full: i * 2 <= stats.foodLevel }">🍗</div>
     </div>
 
-    <!-- XP bar -->
+    <!-- XP bar — 紧贴物品栏上方居中 -->
     <div v-if="playerStore.gameMode === 'survival'" class="xp-bar">
       <div class="xp-bar-bg">
         <div class="xp-bar-fill" :style="{ width: (stats.xpProgress * 100) + '%' }"></div>
       </div>
       <span class="xp-level">{{ stats.xpLevel }}</span>
-    </div>
-
-    <!-- Oxygen bar (underwater) -->
-    <div v-if="playerStore.isUnderwater && playerStore.gameMode === 'survival'" class="oxygen-bar">
-      <div v-for="i in playerStore.maxOxygen" :key="i" class="bubble" :class="{ full: i <= playerStore.oxygen }">○</div>
     </div>
 
     <!-- Hotbar -->
@@ -343,24 +343,31 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   text-shadow: 1px 1px 0 #000;
 }
 
+/* 血条：紧贴物品栏左侧，上移靠近经验条 */
 .health-bar {
-  position: absolute; bottom: 90px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; gap: 2px;
+  position: absolute;
+  bottom: calc(20px + 36px);
+  right: calc(50% + 233px + 8px);
+  display: flex; align-items: center; gap: 2px;
 }
 .heart { font-size: 16px; color: #333; text-shadow: 1px 1px 0 #000; }
 .heart.full { color: #e33; }
 
+/* 饱食度：紧贴物品栏右侧，上移靠近经验条 */
 .food-bar {
-  position: absolute; bottom: 72px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; gap: 2px;
+  position: absolute;
+  bottom: calc(20px + 36px);
+  left: calc(50% + 233px + 8px);
+  display: flex; align-items: center; gap: 2px;
 }
 .drumstick { font-size: 14px; color: #333; text-shadow: 1px 1px 0 #000; opacity: 0.5; }
 .drumstick.full { opacity: 1; }
 
+/* 经验条：紧贴物品栏上方，居中显示 */
 .xp-bar {
-  position: absolute; bottom: 56px; left: 50%;
+  position: absolute;
+  bottom: calc(20px + 58px);
+  left: 50%;
   transform: translateX(-50%);
   display: flex; align-items: center; gap: 4px;
 }
@@ -380,9 +387,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   text-shadow: 1px 1px 0 #000; font-family: monospace; min-width: 24px;
 }
 
+/* 氧气条：血条上方（水下时显示，血条此时仍可见） */
 .oxygen-bar {
-  position: absolute; bottom: 90px; left: 50%;
-  transform: translateX(-50%);
+  position: absolute;
+  bottom: calc(20px + 68px);
+  right: calc(50% + 233px + 8px);
   display: flex; gap: 2px;
 }
 .bubble {
@@ -487,13 +496,28 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
     font-size: 10px;
   }
 
+  /* 横屏：物品栏 bottom:8px, slot 38px → outer top at bottom:48px */
   .health-bar {
-    bottom: 52px;
+    bottom: calc(8px + 38px + 2px);
+    right: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
   }
   .heart { font-size: 13px; }
 
+  .food-bar {
+    bottom: calc(8px + 38px + 2px);
+    left: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
+  }
+  .drumstick { font-size: 11px; }
+
+  .xp-bar {
+    bottom: calc(8px + 38px + 2px + 2px + 6px);
+  }
+  .xp-bar-bg { width: 140px; }
+  .xp-level { font-size: 12px; }
+
   .oxygen-bar {
-    bottom: 68px;
+    bottom: calc(8px + 38px + 2px + 20px);
+    right: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
   }
   .bubble { font-size: 13px; }
 

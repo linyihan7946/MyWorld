@@ -11,6 +11,8 @@ export const useUIStore = defineStore('ui', () => {
   const anvilY = ref(0)
   const anvilZ = ref(0)
   const cameraMode = ref<'firstPerson' | 'thirdPerson'>('firstPerson')
+  /** 睡觉渐黑遮罩透明度 0..1 */
+  const sleepFade = ref(0)
 
   // === MC 快捷键状态 ===
   const showHUD = ref(true)              // F1
@@ -27,5 +29,6 @@ export const useUIStore = defineStore('ui', () => {
   return {
     showInventory, showCrafting, showPause, showDebug, showAnvil, anvilX, anvilY, anvilZ, cameraMode, closeAll,
     showHUD, showHitboxes, showChunkBorders, showAdvancedTooltips,
+    sleepFade,
   }
 })

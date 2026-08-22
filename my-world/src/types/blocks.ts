@@ -337,6 +337,8 @@ export enum BlockType {
   PISTON_HEAD = 387,
   LEVER = 388,                  // 拉杆
   LEVER_ON = 389,               // 激活的拉杆
+  REDSTONE_TORCH = 390,         // 红石火把 (未充能)
+  REDSTONE_TORCH_ON = 391,      // 红石火把 (充能)
 
   // === 指令专属方块 (创造模式+作弊) ===
   COMMAND_BLOCK = 400,          // 脉冲命令方块 (橙色)
@@ -500,23 +502,23 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.BIRCH_STAIRS]: { id: BlockType.BIRCH_STAIRS, name: '白桦楼梯', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 97 } },
   [BlockType.SANDSTONE_STAIRS]: { id: BlockType.SANDSTONE_STAIRS, name: '砂岩楼梯', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 13 } },
 
-  // Stained Glass - reuse glass texture
-  [BlockType.WHITE_STAINED_GLASS]: { id: BlockType.WHITE_STAINED_GLASS, name: '白色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.ORANGE_STAINED_GLASS]: { id: BlockType.ORANGE_STAINED_GLASS, name: '橙色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.MAGENTA_STAINED_GLASS]: { id: BlockType.MAGENTA_STAINED_GLASS, name: '品红色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.LIGHT_BLUE_STAINED_GLASS]: { id: BlockType.LIGHT_BLUE_STAINED_GLASS, name: '淡蓝色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.YELLOW_STAINED_GLASS]: { id: BlockType.YELLOW_STAINED_GLASS, name: '黄色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.LIME_STAINED_GLASS]: { id: BlockType.LIME_STAINED_GLASS, name: '黄绿色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.PINK_STAINED_GLASS]: { id: BlockType.PINK_STAINED_GLASS, name: '粉色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.GRAY_STAINED_GLASS]: { id: BlockType.GRAY_STAINED_GLASS, name: '灰色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.LIGHT_GRAY_STAINED_GLASS]: { id: BlockType.LIGHT_GRAY_STAINED_GLASS, name: '淡灰色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.CYAN_STAINED_GLASS]: { id: BlockType.CYAN_STAINED_GLASS, name: '青色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.PURPLE_STAINED_GLASS]: { id: BlockType.PURPLE_STAINED_GLASS, name: '紫色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.BLUE_STAINED_GLASS]: { id: BlockType.BLUE_STAINED_GLASS, name: '蓝色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.BROWN_STAINED_GLASS]: { id: BlockType.BROWN_STAINED_GLASS, name: '棕色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.GREEN_STAINED_GLASS]: { id: BlockType.GREEN_STAINED_GLASS, name: '绿色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.RED_STAINED_GLASS]: { id: BlockType.RED_STAINED_GLASS, name: '红色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
-  [BlockType.BLACK_STAINED_GLASS]: { id: BlockType.BLACK_STAINED_GLASS, name: '黑色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 64 } },
+  // Stained Glass - 各自对应颜色贴图
+  [BlockType.WHITE_STAINED_GLASS]: { id: BlockType.WHITE_STAINED_GLASS, name: '白色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 239 } },
+  [BlockType.ORANGE_STAINED_GLASS]: { id: BlockType.ORANGE_STAINED_GLASS, name: '橙色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 240 } },
+  [BlockType.MAGENTA_STAINED_GLASS]: { id: BlockType.MAGENTA_STAINED_GLASS, name: '品红色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 241 } },
+  [BlockType.LIGHT_BLUE_STAINED_GLASS]: { id: BlockType.LIGHT_BLUE_STAINED_GLASS, name: '淡蓝色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 242 } },
+  [BlockType.YELLOW_STAINED_GLASS]: { id: BlockType.YELLOW_STAINED_GLASS, name: '黄色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 243 } },
+  [BlockType.LIME_STAINED_GLASS]: { id: BlockType.LIME_STAINED_GLASS, name: '黄绿色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 244 } },
+  [BlockType.PINK_STAINED_GLASS]: { id: BlockType.PINK_STAINED_GLASS, name: '粉色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 245 } },
+  [BlockType.GRAY_STAINED_GLASS]: { id: BlockType.GRAY_STAINED_GLASS, name: '灰色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 246 } },
+  [BlockType.LIGHT_GRAY_STAINED_GLASS]: { id: BlockType.LIGHT_GRAY_STAINED_GLASS, name: '淡灰色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 247 } },
+  [BlockType.CYAN_STAINED_GLASS]: { id: BlockType.CYAN_STAINED_GLASS, name: '青色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 248 } },
+  [BlockType.PURPLE_STAINED_GLASS]: { id: BlockType.PURPLE_STAINED_GLASS, name: '紫色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 249 } },
+  [BlockType.BLUE_STAINED_GLASS]: { id: BlockType.BLUE_STAINED_GLASS, name: '蓝色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 250 } },
+  [BlockType.BROWN_STAINED_GLASS]: { id: BlockType.BROWN_STAINED_GLASS, name: '棕色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 251 } },
+  [BlockType.GREEN_STAINED_GLASS]: { id: BlockType.GREEN_STAINED_GLASS, name: '绿色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 252 } },
+  [BlockType.RED_STAINED_GLASS]: { id: BlockType.RED_STAINED_GLASS, name: '红色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 253 } },
+  [BlockType.BLACK_STAINED_GLASS]: { id: BlockType.BLACK_STAINED_GLASS, name: '黑色染色玻璃', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 254 } },
 
   // Concrete
   [BlockType.WHITE_CONCRETE]: { id: BlockType.WHITE_CONCRETE, name: '白色混凝土', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 133 } },
@@ -536,26 +538,26 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
 
   // Terracotta
   [BlockType.TERRACOTTA]: { id: BlockType.TERRACOTTA, name: '陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.WHITE_TERRACOTTA]: { id: BlockType.WHITE_TERRACOTTA, name: '白色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.ORANGE_TERRACOTTA]: { id: BlockType.ORANGE_TERRACOTTA, name: '橙色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.YELLOW_TERRACOTTA]: { id: BlockType.YELLOW_TERRACOTTA, name: '黄色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.LIGHT_BLUE_TERRACOTTA]: { id: BlockType.LIGHT_BLUE_TERRACOTTA, name: '淡蓝色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.LIME_TERRACOTTA]: { id: BlockType.LIME_TERRACOTTA, name: '黄绿色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.PINK_TERRACOTTA]: { id: BlockType.PINK_TERRACOTTA, name: '粉色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.GRAY_TERRACOTTA]: { id: BlockType.GRAY_TERRACOTTA, name: '灰色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.CYAN_TERRACOTTA]: { id: BlockType.CYAN_TERRACOTTA, name: '青色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.PURPLE_TERRACOTTA]: { id: BlockType.PURPLE_TERRACOTTA, name: '紫色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.BLUE_TERRACOTTA]: { id: BlockType.BLUE_TERRACOTTA, name: '蓝色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.BROWN_TERRACOTTA]: { id: BlockType.BROWN_TERRACOTTA, name: '棕色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.GREEN_TERRACOTTA]: { id: BlockType.GREEN_TERRACOTTA, name: '绿色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.RED_TERRACOTTA]: { id: BlockType.RED_TERRACOTTA, name: '红色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
-  [BlockType.BLACK_TERRACOTTA]: { id: BlockType.BLACK_TERRACOTTA, name: '黑色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 147 } },
+  [BlockType.WHITE_TERRACOTTA]: { id: BlockType.WHITE_TERRACOTTA, name: '白色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 223 } },
+  [BlockType.ORANGE_TERRACOTTA]: { id: BlockType.ORANGE_TERRACOTTA, name: '橙色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 224 } },
+  [BlockType.YELLOW_TERRACOTTA]: { id: BlockType.YELLOW_TERRACOTTA, name: '黄色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 225 } },
+  [BlockType.LIGHT_BLUE_TERRACOTTA]: { id: BlockType.LIGHT_BLUE_TERRACOTTA, name: '淡蓝色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 226 } },
+  [BlockType.LIME_TERRACOTTA]: { id: BlockType.LIME_TERRACOTTA, name: '黄绿色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 227 } },
+  [BlockType.PINK_TERRACOTTA]: { id: BlockType.PINK_TERRACOTTA, name: '粉色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 228 } },
+  [BlockType.GRAY_TERRACOTTA]: { id: BlockType.GRAY_TERRACOTTA, name: '灰色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 229 } },
+  [BlockType.CYAN_TERRACOTTA]: { id: BlockType.CYAN_TERRACOTTA, name: '青色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 230 } },
+  [BlockType.PURPLE_TERRACOTTA]: { id: BlockType.PURPLE_TERRACOTTA, name: '紫色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 231 } },
+  [BlockType.BLUE_TERRACOTTA]: { id: BlockType.BLUE_TERRACOTTA, name: '蓝色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 232 } },
+  [BlockType.BROWN_TERRACOTTA]: { id: BlockType.BROWN_TERRACOTTA, name: '棕色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 233 } },
+  [BlockType.GREEN_TERRACOTTA]: { id: BlockType.GREEN_TERRACOTTA, name: '绿色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 234 } },
+  [BlockType.RED_TERRACOTTA]: { id: BlockType.RED_TERRACOTTA, name: '红色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 235 } },
+  [BlockType.BLACK_TERRACOTTA]: { id: BlockType.BLACK_TERRACOTTA, name: '黑色陶瓦', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 236 } },
 
   // Sandstone variants
   [BlockType.CHISELED_SANDSTONE]: { id: BlockType.CHISELED_SANDSTONE, name: '雕纹砂岩', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 12 } },
   [BlockType.SMOOTH_SANDSTONE]: { id: BlockType.SMOOTH_SANDSTONE, name: '平滑砂岩', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 12 } },
-  [BlockType.RED_SAND]: { id: BlockType.RED_SAND, name: '红沙', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 148 } },
-  [BlockType.RED_SANDSTONE]: { id: BlockType.RED_SANDSTONE, name: '红砂岩', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 149 } },
+  [BlockType.RED_SAND]: { id: BlockType.RED_SAND, name: '红沙', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 24 } },
+  [BlockType.RED_SANDSTONE]: { id: BlockType.RED_SANDSTONE, name: '红砂岩', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 25 } },
 
   // Nether variants
   [BlockType.POLISHED_BLACKSTONE]: { id: BlockType.POLISHED_BLACKSTONE, name: '磨制黑石', solid: true, transparent: false, breakable: true, hardness: 11, textures: { all: 35 } },
@@ -712,8 +714,10 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.OBSERVER]: { id: BlockType.OBSERVER, name: '侦测器', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 202 } },
   [BlockType.HOPPER]: { id: BlockType.HOPPER, name: '漏斗', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 203 } },
   [BlockType.PISTON_HEAD]: { id: BlockType.PISTON_HEAD, name: '活塞头', solid: true, transparent: false, breakable: true, hardness: 2, textures: { all: 197 } },
-  [BlockType.LEVER]: { id: BlockType.LEVER, name: '拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 6 } },
-  [BlockType.LEVER_ON]: { id: BlockType.LEVER_ON, name: '激活的拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 208 } },
+  [BlockType.LEVER]: { id: BlockType.LEVER, name: '拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 206 } },
+  [BlockType.LEVER_ON]: { id: BlockType.LEVER_ON, name: '激活的拉杆', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 207 } },
+  [BlockType.REDSTONE_TORCH]: { id: BlockType.REDSTONE_TORCH, name: '红石火把', solid: false, transparent: true, breakable: true, hardness: 0.5, textures: { all: 204 } },
+  [BlockType.REDSTONE_TORCH_ON]: { id: BlockType.REDSTONE_TORCH_ON, name: '红石火把(充能)', solid: false, transparent: true, breakable: true, hardness: 0.5, textures: { all: 205 } },
 
   // === 指令专属方块 (创造模式+作弊才能获取) ===
   [BlockType.COMMAND_BLOCK]: { id: BlockType.COMMAND_BLOCK, name: '命令方块', solid: true, transparent: false, breakable: true, hardness: 1, textures: { all: 210 }, commandExclusive: true },

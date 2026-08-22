@@ -29,6 +29,8 @@ export interface BlockState {
   half?: 'top' | 'bottom'    // 台阶/门等
   open?: boolean              // 门/活板门
   powered?: boolean           // 按钮/拉杆
+  structureName?: string      // 结构方块保存的结构名称
+  tntFuse?: number            // TNT 引信剩余时间
 }
 
 // 存储所有方块状态
@@ -343,4 +345,14 @@ export function executeCommand(command: string): { success: boolean; message: st
   }
 
   return { success: false, message: `未知命令: ${cmd}` }
+}
+
+// ============================================================
+// 开发调试: 暴露方块状态模块供自动化测试使用
+// ============================================================
+if (import.meta.env.DEV) {
+  ;(window as any).__blockStateSystem = {
+    getBlockState, getBlockStateValue, setBlockState, removeBlockState,
+    getLightLevel, toggleLightBlock, getCommand, setCommand,
+  }
 }

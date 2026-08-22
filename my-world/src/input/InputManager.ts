@@ -62,11 +62,16 @@ export class InputManager {
     })
 
     document.addEventListener('mousedown', (e) => {
+      // 忽略 UI 覆盖层（背包/容器/菜单等）上的点击，防止点击穿透到游戏世界
+      // 指针锁定时事件目标始终是画布本身
+      if (!this.canvas || e.target !== this.canvas) return
       this.mouseButtons.add(e.button)
       this.onMouseDown?.(e.button)
     })
 
     document.addEventListener('mouseup', (e) => {
+      // 只有被接受的 mousedown 才响应 mouseup，避免 UI 点击穿透触发世界操作
+      if (!this.mouseButtons.has(e.button)) return
       this.mouseButtons.delete(e.button)
       this.onMouseUp?.(e.button)
     })

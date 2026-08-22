@@ -27,7 +27,9 @@ export const usePlayerStore = defineStore('player', () => {
   }
   function autoDetectControlMode() {
     const hasTouch = window.matchMedia('(pointer: coarse)').matches
-    controlMode.value = hasTouch ? 'mobile' : 'pc'
+    // 只有触屏 + 小屏幕才是真正的手机/平板；触屏 PC 当作 PC 处理
+    const isSmallScreen = Math.max(window.innerWidth, window.innerHeight) <= 900
+    controlMode.value = (hasTouch && isSmallScreen) ? 'mobile' : 'pc'
   }
 
   // === 作弊系统 ===

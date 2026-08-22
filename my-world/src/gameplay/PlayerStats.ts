@@ -214,3 +214,13 @@ export function exhaustMine(): void {
 export function exhaustDamage(damage: number): void {
   playerStats.exhaustion += 0.1 * damage
 }
+
+/** 重置玩家状态（新游戏时调用） */
+export function resetPlayerStats(): void {
+  playerStats.foodLevel = 20
+  playerStats.saturation = 5
+  playerStats.exhaustion = 0
+  playerStats.experience = 0
+  playerStats.experienceLevel = 0
+  playerStats.totalExperience = 0
+}

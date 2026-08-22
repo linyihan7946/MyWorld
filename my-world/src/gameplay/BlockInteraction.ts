@@ -214,6 +214,12 @@ export class BlockInteraction {
     if ((selectedBlockType === BlockType.REDSTONE_DUST || selectedBlockType === BlockType.REPEATER || selectedBlockType === BlockType.COMPARATOR) &&
       !isSolid(this.chunkManager.getBlock(placePos.x, placePos.y - 1, placePos.z) as BlockType)) return false
 
+    // 红石火把必须附着在实体方块表面, 且不能贴在天花板底面
+    if (selectedBlockType === BlockType.REDSTONE_TORCH) {
+      const supportBlock = this.chunkManager.getBlock(this.targetBlock.x, this.targetBlock.y, this.targetBlock.z)
+      if (!isSolid(supportBlock as BlockType) || this.targetNormal.y === -1) return false
+    }
+
     // 箱子最多只能与一个相邻箱子组成双箱，避免三箱共享同一库存。
     if (selectedBlockType === BlockType.CHEST && !this.canPlaceChest(placePos)) return false
 

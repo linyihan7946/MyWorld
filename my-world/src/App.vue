@@ -15,14 +15,21 @@
     <InventoryScreen />
     <ContainerScreen />
     <CommandBlockUI ref="commandBlockUI" />
+    <StructureBlockUI ref="structureBlockUI" />
+    <FurnaceScreen />
     <DebugOverlay />
+
+    <!-- 睡觉渐黑遮罩 -->
+    <div v-if="uiStore.sleepFade > 0" class="sleep-overlay" :style="{ opacity: uiStore.sleepFade }">
+      <div class="sleep-text">🌙 睡觉中...</div>
+    </div>
 
     <!-- 暂停菜单覆盖层 -->
     <div v-if="uiStore.showPause" class="pause-overlay" @click.self="uiStore.showPause = false">
       <div class="pause-menu">
         <h2>游戏暂停</h2>
         <button @click="uiStore.showPause = false; tryLockPointer()">继续游戏</button>
-        <button @click="toggleFullscreen">全屏切换 (F11)</button>
+        <button @click="toggleFullscreen">全屏切换 (P)</button>
         <button @click="returnToMenu">返回主菜单</button>
       </div>
     </div>
@@ -77,7 +84,7 @@
 
         <div class="menu-footer">
           <span class="version-text">My World v0.2</span>
-          <span class="copyright-text">Not an official Minecraft product</span>
+          <span class="copyright-text">Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</span>
         </div>
 
         <!-- 功能一览 -->
@@ -88,22 +95,22 @@
             <div class="feat-line">Shift 奔跑 · 双击空格 飞行</div>
             <div class="feat-line">鼠标左键 挖掘 · 右键 放置</div>
             <div class="feat-line">E 背包 · 1-9 热键栏</div>
-            <div class="feat-line">V/F5 切换视角</div>
+            <div class="feat-line">Q 丢弃物品 · V 切换视角</div>
           </div>
           <div class="feature-col">
             <div class="feat-title">⚡ 功能键</div>
             <div class="feat-line">G 切换创造/生存</div>
             <div class="feat-line">F 作弊开关 · Y 切换天气</div>
             <div class="feat-line">H 保存 · R 手机/PC模式</div>
-            <div class="feat-line">Esc 暂停 · F11 全屏</div>
-            <div class="feat-line">F1 隐藏HUD · F3 调试屏幕</div>
+            <div class="feat-line">Esc 暂停 · P 全屏</div>
+            <div class="feat-line">Z 隐藏HUD · X 调试屏幕</div>
           </div>
           <div class="feature-col">
-            <div class="feat-title">🔧 F3 调试</div>
-            <div class="feat-line">F3+A 刷新区块</div>
-            <div class="feat-line">F3+B 显示碰撞箱</div>
-            <div class="feat-line">F3+G 显示区块边界</div>
-            <div class="feat-line">F3+H 高级提示框</div>
+            <div class="feat-title">🔧 X 调试</div>
+            <div class="feat-line">X+A 刷新区块</div>
+            <div class="feat-line">X+B 显示碰撞箱</div>
+            <div class="feat-line">X+C 显示区块边界</div>
+            <div class="feat-line">X+T 高级提示框</div>
           </div>
           <div class="feature-col">
             <div class="feat-title">🔴 红石</div>
@@ -138,6 +145,8 @@ import HUD from '@/ui/components/HUD.vue'
 import InventoryScreen from '@/ui/components/InventoryScreen.vue'
 import ContainerScreen from '@/ui/components/ContainerScreen.vue'
 import CommandBlockUI from '@/ui/components/CommandBlockUI.vue'
+import StructureBlockUI from '@/ui/components/StructureBlockUI.vue'
+import FurnaceScreen from '@/ui/components/FurnaceScreen.vue'
 import DebugOverlay from '@/ui/components/DebugOverlay.vue'
 import MobileControls from '@/ui/components/MobileControls.vue'
 
@@ -156,6 +165,7 @@ const saveTimestamp = ref(SaveSystem.getSaveTimestamp())
 const playerStore = usePlayerStore()
 const uiStore = useUIStore()
 const commandBlockUI = ref<InstanceType<typeof CommandBlockUI> | null>(null)
+const structureBlockUI = ref<InstanceType<typeof StructureBlockUI> | null>(null)
 
 /**
  * 将字符串种子哈希为数字
@@ -195,6 +205,10 @@ const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loa
     const seed = parseSeed(seedInput.value)
     engine = new Engine(gameCanvas.value, seed, isSuperflat)
     await engine.init()
+    // 开发调试：暴露引擎实例供自动化测试使用
+    if (import.meta.env.DEV) {
+      ;(window as any).__engine = engine
+    }
 
     // 设置游戏模式
     if (mode === 'creative') {
@@ -222,6 +236,11 @@ const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loa
     // 命令方块UI事件
     engine.eventBus.on('commandBlock:open', (data: { x: number; y: number; z: number; blockType: number }) => {
       commandBlockUI.value?.open(data)
+    })
+
+    // 结构方块/拼图方块UI事件
+    engine.eventBus.on('structureBlock:open', (data: { x: number; y: number; z: number; blockType: number }) => {
+      structureBlockUI.value?.open(data)
     })
   } catch (err: any) {
     console.error('Game init error:', err)
@@ -334,10 +353,13 @@ const tryLockLandscape = async () => {
   }
 }
 
-// 监听是否竖屏（显示旋转提示）
+// 监听是否竖屏（仅小屏手机竖屏时才显示旋转提示）
 const isPortrait = ref(false)
 const checkOrientation = () => {
-  isPortrait.value = window.innerHeight > window.innerWidth && playerStore.controlMode === 'mobile'
+  const isMobileSize = Math.max(window.innerWidth, window.innerHeight) <= 900
+  isPortrait.value = window.innerHeight > window.innerWidth
+    && playerStore.controlMode === 'mobile'
+    && isMobileSize
 }
 window.addEventListener('resize', checkOrientation)
 window.addEventListener('orientationchange', checkOrientation)
@@ -376,6 +398,27 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.sleep-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9500;
+  pointer-events: none;
+  transition: opacity 0.1s linear;
+}
+
+.sleep-text {
+  color: #fff;
+  font-size: 28px;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
 }
 
 .death-screen {
@@ -449,12 +492,14 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
+  /* 官方壁纸 (minecraft.net 原版壁纸包) + 半透明暗色渐变保证菜单文字可读 */
   background:
     linear-gradient(180deg,
-      #1a1a2e 0%,
-      #16213e 30%,
-      #0f3460 60%,
-      #1a1a2e 100%);
+      rgba(16, 18, 40, 0.55) 0%,
+      rgba(15, 30, 70, 0.60) 30%,
+      rgba(10, 20, 50, 0.68) 60%,
+      rgba(16, 18, 40, 0.72) 100%),
+    url('/images/splash_1920x1080.png') center / cover no-repeat;
   z-index: -1;
 }
 
@@ -617,8 +662,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   max-width: 90vw;
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
+}
+
+.copyright-text {
+  text-align: right;
+  max-width: 70%;
+  line-height: 1.4;
 }
 
 /* ── 功能一览 ── */
@@ -732,7 +784,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.92);
+  /* 竖版官方壁纸 + 暗色遮罩 */
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.82)),
+    url('/images/splash_1080x1920.png') center / cover no-repeat;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -4,6 +4,7 @@ import { blockFragmentShader } from './shaders/blockFrag'
 import { TextureAtlas } from './TextureAtlas'
 import { CHUNK_SIZE, CHUNK_HEIGHT, ATLAS_SIZE } from '@/utils/constants'
 import { BlockType, getBlockDefinition, isTransparent } from '@/types/blocks'
+import { getDustPower } from '@/gameplay/redstonePower'
 import type { Chunk } from '@/world/Chunk'
 
 const FACES = [
@@ -327,14 +328,20 @@ export class ChunkMesher {
               }
 
               // Minecraft-style vertex AO
-              const ao = isBlockTransparent
-                ? 1.0 // transparent blocks don't receive AO
-                : this.computeAO(
-                    chunk, neighbors,
-                    bx, y, bz,
-                    face.dir[0], face.dir[1], face.dir[2],
-                    corner[0], corner[1], corner[2],
-                  )
+              let ao: number
+              if (isBlockTransparent) {
+                // 透明方块不受 AO 影响; 红石粉尘按能量等级点亮 (0=暗红, 15=最亮)
+                ao = blockType === BlockType.REDSTONE_DUST
+                  ? 0.35 + 0.65 * (getDustPower(bx, y, bz) / 15)
+                  : 1.0
+              } else {
+                ao = this.computeAO(
+                  chunk, neighbors,
+                  bx, y, bz,
+                  face.dir[0], face.dir[1], face.dir[2],
+                  corner[0], corner[1], corner[2],
+                )
+              }
               targetAO.push(ao)
             }
 

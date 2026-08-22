@@ -323,7 +323,7 @@ const creativeCategories: Array<{ id: CreativeCategory; name: string }> = [
   { id: 'armor', name: '盔甲' }, { id: 'items', name: '物品' },
   { id: 'command', name: '⚡ 指令' },
 ]
-const redstoneItems = new Set(['redstone', 'redstone_block', 'redstone_dust', 'piston', 'sticky_piston', 'repeater', 'comparator', 'observer', 'hopper', 'lever'])
+const redstoneItems = new Set(['redstone_block', 'redstone_dust', 'piston', 'sticky_piston', 'repeater', 'comparator', 'observer', 'hopper', 'lever', 'redstone_torch', 'oak_button', 'stone_button', 'oak_pressure_plate', 'stone_pressure_plate', 'light_weighted_pressure_plate', 'heavy_weighted_pressure_plate'])
 const commandItems = new Set([
   'command_block', 'chain_command_block', 'repeat_command_block',
   'barrier', 'structure_block', 'jigsaw_block', 'light_block', 'structure_void',
@@ -883,8 +883,13 @@ const handleKeyDown = (e: KeyboardEvent) => {
       uiStore.closeAll()
     }
   }
-  // Press Q to drop cursor item
+  // Press Q to drop cursor item into the world
   if (e.code === 'KeyQ' && cursorItem.value) {
+    inventoryStore.pendingDrop = {
+      item: cursorItem.value.item,
+      count: cursorItem.value.count,
+      blockType: getBlockTypeForItem(cursorItem.value.item),
+    }
     cursorItem.value = null
   }
 }
