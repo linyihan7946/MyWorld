@@ -17,7 +17,6 @@
     <CommandBlockUI ref="commandBlockUI" />
     <StructureBlockUI ref="structureBlockUI" />
     <FurnaceScreen />
-    <DebugOverlay />
 
     <!-- 睡觉渐黑遮罩 -->
     <div v-if="uiStore.sleepFade > 0" class="sleep-overlay" :style="{ opacity: uiStore.sleepFade }">
@@ -126,12 +125,6 @@
       </div>
     </div>
 
-    <!-- 竖屏旋转提示（仅手机端） -->
-    <div v-if="isPortrait && started" class="rotate-overlay" @click="tryLockLandscape">
-      <div class="rotate-icon">📱</div>
-      <div class="rotate-text">请旋转手机至横屏</div>
-      <div class="rotate-hint">点击屏幕尝试自动旋转</div>
-    </div>
   </div>
 </template>
 
@@ -147,7 +140,6 @@ import ContainerScreen from '@/ui/components/ContainerScreen.vue'
 import CommandBlockUI from '@/ui/components/CommandBlockUI.vue'
 import StructureBlockUI from '@/ui/components/StructureBlockUI.vue'
 import FurnaceScreen from '@/ui/components/FurnaceScreen.vue'
-import DebugOverlay from '@/ui/components/DebugOverlay.vue'
 import MobileControls from '@/ui/components/MobileControls.vue'
 
 const gameCanvas = ref<HTMLElement | null>(null)
@@ -196,11 +188,6 @@ const initGame = async (mode: 'survival' | 'creative', isSuperflat: boolean, loa
   try {
     started.value = true
     gameMessage.value = ''
-
-    // 移动端尝试强制横屏
-    if (playerStore.controlMode === 'mobile') {
-      tryLockLandscape()
-    }
 
     const seed = parseSeed(seedInput.value)
     engine = new Engine(gameCanvas.value, seed, isSuperflat)
@@ -337,39 +324,9 @@ window.addEventListener('orientationchange', handleOrientationChange)
 // 部分安卓浏览器不触发 orientationchange，监听 resize 兜底
 window.addEventListener('resize', handleOrientationChange)
 
-// 移动端强制横屏（需要全屏 API 支持）
-const tryLockLandscape = async () => {
-  try {
-    // 先进入全屏，然后锁定横屏方向
-    const el = document.documentElement
-    if (el.requestFullscreen) {
-      await el.requestFullscreen()
-    }
-    if (screen.orientation && 'lock' in screen.orientation) {
-      await (screen.orientation as any).lock('landscape')
-    }
-  } catch {
-    // 浏览器不支持或用户拒绝，静默失败
-  }
-}
-
-// 监听是否竖屏（仅小屏手机竖屏时才显示旋转提示）
-const isPortrait = ref(false)
-const checkOrientation = () => {
-  const isMobileSize = Math.max(window.innerWidth, window.innerHeight) <= 900
-  isPortrait.value = window.innerHeight > window.innerWidth
-    && playerStore.controlMode === 'mobile'
-    && isMobileSize
-}
-window.addEventListener('resize', checkOrientation)
-window.addEventListener('orientationchange', checkOrientation)
-setTimeout(checkOrientation, 500)
-
 onUnmounted(() => {
   window.removeEventListener('orientationchange', handleOrientationChange)
   window.removeEventListener('resize', handleOrientationChange)
-  window.removeEventListener('resize', checkOrientation)
-  window.removeEventListener('orientationchange', checkOrientation)
   engine?.dispose()
   engine = null
 })
@@ -777,45 +734,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
     font-size: 18px;
     padding: 10px 40px;
   }
-}
-
-/* ── 竖屏旋转提示 ── */
-.rotate-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  /* 竖版官方壁纸 + 暗色遮罩 */
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.82)),
-    url('/images/splash_1080x1920.png') center / cover no-repeat;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.rotate-icon {
-  font-size: 80px;
-  animation: rotateShake 1.5s ease-in-out infinite;
-}
-.rotate-text {
-  color: white;
-  font-size: 24px;
-  font-weight: bold;
-  font-family: 'Courier New', monospace;
-  margin-top: 20px;
-  text-shadow: 2px 2px 0 #000;
-}
-.rotate-hint {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
-  font-family: 'Courier New', monospace;
-  margin-top: 12px;
-}
-@keyframes rotateShake {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(90deg); }
-  75% { transform: rotate(90deg); }
 }
 
 /* ── 暂停菜单 ── */

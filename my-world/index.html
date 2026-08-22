@@ -25,6 +25,28 @@
         user-select: none;
       }
       #app { width: 100%; height: 100%; }
+
+      /* ── 手机端强制横屏 ─ */
+      /* 竖屏时通过 CSS transform 旋转整个页面，模拟横屏效果 */
+      @media screen and (orientation: portrait) and (max-width: 900px) {
+        html, body {
+          overflow: hidden;
+          position: fixed;
+          width: 100%;
+          height: 100%;
+        }
+        #app {
+          /* 旋转 90° 并平移到正确位置 */
+          transform: rotate(90deg) translate(0, -100vw);
+          transform-origin: top left;
+          /* 交换宽高 */
+          width: 100vh;
+          height: 100vw;
+          position: fixed;
+          top: 0;
+          left: 0;
+        }
+      }
     </style>
   </head>
   <body>
