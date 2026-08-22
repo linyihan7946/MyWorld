@@ -651,22 +651,22 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.GRANITE_WALL]: { id: BlockType.GRANITE_WALL, name: '花岗岩墙', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 85 } },
 
   // Doors
-  [BlockType.OAK_DOOR]: { id: BlockType.OAK_DOOR, name: '橡木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 7 } },
-  [BlockType.SPRUCE_DOOR]: { id: BlockType.SPRUCE_DOOR, name: '云杉木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 94 } },
-  [BlockType.BIRCH_DOOR]: { id: BlockType.BIRCH_DOOR, name: '白桦木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 97 } },
-  [BlockType.JUNGLE_DOOR]: { id: BlockType.JUNGLE_DOOR, name: '丛林木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 100 } },
-  [BlockType.ACACIA_DOOR]: { id: BlockType.ACACIA_DOOR, name: '金合欢木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 103 } },
-  [BlockType.DARK_OAK_DOOR]: { id: BlockType.DARK_OAK_DOOR, name: '深色橡木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 106 } },
-  [BlockType.IRON_DOOR]: { id: BlockType.IRON_DOOR, name: '铁门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 70 } },
+  [BlockType.OAK_DOOR]: { id: BlockType.OAK_DOOR, name: '橡木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 43 } },
+  [BlockType.SPRUCE_DOOR]: { id: BlockType.SPRUCE_DOOR, name: '云杉木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 44 } },
+  [BlockType.BIRCH_DOOR]: { id: BlockType.BIRCH_DOOR, name: '白桦木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 45 } },
+  [BlockType.JUNGLE_DOOR]: { id: BlockType.JUNGLE_DOOR, name: '丛林木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 46 } },
+  [BlockType.ACACIA_DOOR]: { id: BlockType.ACACIA_DOOR, name: '金合欢木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 47 } },
+  [BlockType.DARK_OAK_DOOR]: { id: BlockType.DARK_OAK_DOOR, name: '深色橡木门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 48 } },
+  [BlockType.IRON_DOOR]: { id: BlockType.IRON_DOOR, name: '铁门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 49 } },
 
   // Trapdoors
-  [BlockType.OAK_TRAPDOOR]: { id: BlockType.OAK_TRAPDOOR, name: '橡木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 7 } },
-  [BlockType.SPRUCE_TRAPDOOR]: { id: BlockType.SPRUCE_TRAPDOOR, name: '云杉木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 94 } },
-  [BlockType.BIRCH_TRAPDOOR]: { id: BlockType.BIRCH_TRAPDOOR, name: '白桦木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 97 } },
-  [BlockType.JUNGLE_TRAPDOOR]: { id: BlockType.JUNGLE_TRAPDOOR, name: '丛林木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 100 } },
-  [BlockType.ACACIA_TRAPDOOR]: { id: BlockType.ACACIA_TRAPDOOR, name: '金合欢木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 103 } },
-  [BlockType.DARK_OAK_TRAPDOOR]: { id: BlockType.DARK_OAK_TRAPDOOR, name: '深色橡木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 106 } },
-  [BlockType.IRON_TRAPDOOR]: { id: BlockType.IRON_TRAPDOOR, name: '铁活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 70 } },
+  [BlockType.OAK_TRAPDOOR]: { id: BlockType.OAK_TRAPDOOR, name: '橡木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 53 } },
+  [BlockType.SPRUCE_TRAPDOOR]: { id: BlockType.SPRUCE_TRAPDOOR, name: '云杉木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 54 } },
+  [BlockType.BIRCH_TRAPDOOR]: { id: BlockType.BIRCH_TRAPDOOR, name: '白桦木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 55 } },
+  [BlockType.JUNGLE_TRAPDOOR]: { id: BlockType.JUNGLE_TRAPDOOR, name: '丛林木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 56 } },
+  [BlockType.ACACIA_TRAPDOOR]: { id: BlockType.ACACIA_TRAPDOOR, name: '金合欢木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 57 } },
+  [BlockType.DARK_OAK_TRAPDOOR]: { id: BlockType.DARK_OAK_TRAPDOOR, name: '深色橡木活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 58 } },
+  [BlockType.IRON_TRAPDOOR]: { id: BlockType.IRON_TRAPDOOR, name: '铁活板门', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 59 } },
 
   // Buttons and pressure plates
   [BlockType.OAK_BUTTON]: { id: BlockType.OAK_BUTTON, name: '橡木按钮', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 7 } },
@@ -677,7 +677,7 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE]: { id: BlockType.HEAVY_WEIGHTED_PRESSURE_PLATE, name: '重质测重压力板', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 70 } },
 
   // Miscellaneous
-  [BlockType.LADDER]: { id: BlockType.LADDER, name: '梯子', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 7 } },
+  [BlockType.LADDER]: { id: BlockType.LADDER, name: '梯子', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 65 } },
   [BlockType.RAIL]: { id: BlockType.RAIL, name: '铁轨', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 190 } },
   [BlockType.POWERED_RAIL]: { id: BlockType.POWERED_RAIL, name: '充能铁轨', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 190 } },
   [BlockType.DETECTOR_RAIL]: { id: BlockType.DETECTOR_RAIL, name: '探测铁轨', solid: false, transparent: true, breakable: true, hardness: 11, textures: { all: 190 } },
@@ -707,8 +707,8 @@ export const BLOCK_REGISTRY: Record<number, BlockDefinition> = {
   [BlockType.BLACK_BED]: { id: BlockType.BLACK_BED, name: '黑色床', solid: true, transparent: true, breakable: true, hardness: 11, textures: { all: 132 } },
   // Redstone components
   [BlockType.REDSTONE_DUST]: { id: BlockType.REDSTONE_DUST, name: '红石粉', solid: false, transparent: true, breakable: true, hardness: 1, textures: { all: 196 } },
-  [BlockType.PISTON]: { id: BlockType.PISTON, name: '活塞', solid: true, transparent: false, breakable: true, hardness: 12, textures: { top: 197, bottom: 1, side: 198 } },
-  [BlockType.STICKY_PISTON]: { id: BlockType.STICKY_PISTON, name: '粘性活塞', solid: true, transparent: false, breakable: true, hardness: 12, textures: { top: 199, bottom: 1, side: 198 } },
+  [BlockType.PISTON]: { id: BlockType.PISTON, name: '活塞', solid: true, transparent: false, breakable: true, hardness: 12, textures: { top: 197, bottom: 66, side: 198 } },
+  [BlockType.STICKY_PISTON]: { id: BlockType.STICKY_PISTON, name: '粘性活塞', solid: true, transparent: false, breakable: true, hardness: 12, textures: { top: 199, bottom: 66, side: 198 } },
   [BlockType.REPEATER]: { id: BlockType.REPEATER, name: '红石中继器', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 200 } },
   [BlockType.COMPARATOR]: { id: BlockType.COMPARATOR, name: '红石比较器', solid: false, transparent: true, breakable: true, hardness: 2, textures: { all: 201 } },
   [BlockType.OBSERVER]: { id: BlockType.OBSERVER, name: '侦测器', solid: true, transparent: false, breakable: true, hardness: 12, textures: { all: 202 } },

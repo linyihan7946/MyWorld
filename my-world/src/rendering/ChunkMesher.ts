@@ -5,6 +5,7 @@ import { TextureAtlas } from './TextureAtlas'
 import { CHUNK_SIZE, CHUNK_HEIGHT, ATLAS_SIZE } from '@/utils/constants'
 import { BlockType, getBlockDefinition, isTransparent } from '@/types/blocks'
 import { getDustPower } from '@/gameplay/redstonePower'
+import { getBlockState } from '@/gameplay/BlockStateSystem'
 import type { Chunk } from '@/world/Chunk'
 
 const FACES = [
@@ -34,6 +35,7 @@ export interface ChunkMeshResult {
 }
 
 type NeighborChunks = { px?: Chunk; nx?: Chunk; pz?: Chunk; nz?: Chunk }
+type BlockBounds = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }
 
 export class ChunkMesher {
   private atlas: TextureAtlas
@@ -134,6 +136,51 @@ export class ChunkMesher {
     return !isTransparent(block)
   }
 
+  private isDoor(block: BlockType): boolean {
+    return block >= BlockType.OAK_DOOR && block <= BlockType.IRON_DOOR
+  }
+
+  private isTrapdoor(block: BlockType): boolean {
+    return block >= BlockType.OAK_TRAPDOOR && block <= BlockType.IRON_TRAPDOOR
+  }
+
+  /** 返回非完整方块的实际渲染范围。朝向：0 北、1 南、2 东、3 西。 */
+  private getSpecialBounds(block: BlockType, wx: number, wy: number, wz: number): BlockBounds | null {
+    const thickness = 3 / 16
+    const state = getBlockState(wx, wy, wz)
+    const facing = state.facing ?? 0
+
+    if (block === BlockType.LADDER) {
+      const ladderThickness = 1 / 16
+      if (facing === 1) return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 1 - ladderThickness, maxZ: 1 }
+      if (facing === 2) return { minX: 1 - ladderThickness, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      if (facing === 3) return { minX: 0, maxX: ladderThickness, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: ladderThickness }
+    }
+
+    if (this.isDoor(block)) {
+      const direction = (facing + (state.open ? 1 : 0)) % 4
+      if (direction === 1) return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 1 - thickness, maxZ: 1 }
+      if (direction === 2) return { minX: 1 - thickness, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      if (direction === 3) return { minX: 0, maxX: thickness, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: thickness }
+    }
+
+    if (this.isTrapdoor(block)) {
+      if (!state.open) {
+        return state.half === 'top'
+          ? { minX: 0, maxX: 1, minY: 1 - thickness, maxY: 1, minZ: 0, maxZ: 1 }
+          : { minX: 0, maxX: 1, minY: 0, maxY: thickness, minZ: 0, maxZ: 1 }
+      }
+      if (facing === 1) return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 1 - thickness, maxZ: 1 }
+      if (facing === 2) return { minX: 1 - thickness, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      if (facing === 3) return { minX: 0, maxX: thickness, minY: 0, maxY: 1, minZ: 0, maxZ: 1 }
+      return { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: thickness }
+    }
+
+    return null
+  }
+
   // ─── Minecraft-style vertex Ambient Occlusion ───
 
   /**
@@ -229,6 +276,9 @@ export class ChunkMesher {
           const isWater = blockType === BlockType.WATER
           const shapeHeight = blockType === BlockType.REDSTONE_DUST ? 0.025
             : (blockType === BlockType.REPEATER || blockType === BlockType.COMPARATOR ? 0.125 : 1)
+          const bx = chunk.chunkX * CHUNK_SIZE + x
+          const bz = chunk.chunkZ * CHUNK_SIZE + z
+          const specialBounds = this.getSpecialBounds(blockType, bx, y, bz)
 
           for (const face of FACES) {
             const nx = x + face.dir[0]
@@ -258,7 +308,11 @@ export class ChunkMesher {
               ? false  // 屏障永远不遮挡相邻面（像空气一样透明）
               : (neighborBlock !== BlockType.AIR && !isTransparent(neighborBlock))
 
-            if (!isBlockTransparent) {
+            if (this.isDoor(blockType) && neighborBlock === blockType && (face.name === 'top' || face.name === 'bottom')) {
+              continue
+            } else if (specialBounds) {
+              // 薄片模型必须保留贴着支撑方块的一面，不能按完整立方体规则剔除。
+            } else if (!isBlockTransparent) {
               // Opaque block: skip face if neighbor is opaque
               if (neighborOpaque) continue
             } else {
@@ -295,21 +349,26 @@ export class ChunkMesher {
             const targetAO = isBlockTransparent ? tShade : oShade
             let vertCount = isBlockTransparent ? tVert : oVert
 
-            // World origin of the current block
-            const bx = chunk.chunkX * CHUNK_SIZE + x
-            const bz = chunk.chunkZ * CHUNK_SIZE + z
-
             const inset = 0.001
             for (let i = 0; i < 4; i++) {
               const corner = face.corners[i]
               const faceUv = face.uvs[i]
 
-              let py = y + corner[1] * shapeHeight
+              const localX = specialBounds
+                ? specialBounds.minX + corner[0] * (specialBounds.maxX - specialBounds.minX)
+                : corner[0]
+              const localY = specialBounds
+                ? specialBounds.minY + corner[1] * (specialBounds.maxY - specialBounds.minY)
+                : corner[1] * shapeHeight
+              const localZ = specialBounds
+                ? specialBounds.minZ + corner[2] * (specialBounds.maxZ - specialBounds.minZ)
+                : corner[2]
+              let py = y + localY
               if (isWater && face.name === 'top') {
                 py = y + 0.85
               }
 
-              targetPos.push(x + corner[0], py, z + corner[2])
+              targetPos.push(x + localX, py, z + localZ)
               targetNorm.push(face.normal[0], face.normal[1], face.normal[2])
 
               const atlasU = uBase + faceUv[0] * uSize

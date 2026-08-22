@@ -343,11 +343,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   text-shadow: 1px 1px 0 #000;
 }
 
-/* 血条：紧贴物品栏左侧，上移靠近经验条 */
+/* 生存状态条：与经验条共用物品栏上沿，分别排在物品栏两侧 */
 .health-bar {
   position: absolute;
-  bottom: calc(20px + 36px);
-  right: calc(50% + 233px + 8px);
+  bottom: calc(20px + 58px);
+  right: calc(50% + 237px + 8px);
   display: flex; align-items: center; gap: 2px;
 }
 .heart { font-size: 16px; color: #333; text-shadow: 1px 1px 0 #000; }
@@ -356,8 +356,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 /* 饱食度：紧贴物品栏右侧，上移靠近经验条 */
 .food-bar {
   position: absolute;
-  bottom: calc(20px + 36px);
-  left: calc(50% + 233px + 8px);
+  bottom: calc(20px + 58px);
+  left: calc(50% + 237px + 8px);
   display: flex; align-items: center; gap: 2px;
 }
 .drumstick { font-size: 14px; color: #333; text-shadow: 1px 1px 0 #000; opacity: 0.5; }
@@ -390,8 +390,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 /* 氧气条：血条上方（水下时显示，血条此时仍可见） */
 .oxygen-bar {
   position: absolute;
-  bottom: calc(20px + 68px);
-  right: calc(50% + 233px + 8px);
+  bottom: calc(20px + 80px);
+  right: calc(50% + 237px + 8px);
   display: flex; gap: 2px;
 }
 .bubble {
@@ -408,6 +408,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 }
 .hotbar-slot {
   width: 50px; height: 50px;
+  box-sizing: border-box;
   background: rgba(80, 80, 80, 0.7);
   border: 2px solid rgba(50, 50, 50, 0.8);
   position: relative;
@@ -498,14 +499,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
 
   /* 横屏：物品栏 bottom:8px, slot 38px → outer top at bottom:48px */
   .health-bar {
-    bottom: calc(8px + 38px + 2px);
-    right: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
+    bottom: calc(8px + 38px + 2px + 2px + 6px);
+    right: calc(50% + 177px + 6px);
   }
   .heart { font-size: 13px; }
 
   .food-bar {
-    bottom: calc(8px + 38px + 2px);
-    left: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
+    bottom: calc(8px + 38px + 2px + 2px + 6px);
+    left: calc(50% + 177px + 6px);
   }
   .drumstick { font-size: 11px; }
 
@@ -516,8 +517,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeyDown))
   .xp-level { font-size: 12px; }
 
   .oxygen-bar {
-    bottom: calc(8px + 38px + 2px + 20px);
-    right: calc(50% + (38px * 9 + 2px * 8 + 4px) / 2 + 6px);
+    bottom: calc(8px + 38px + 2px + 2px + 26px);
+    right: calc(50% + 177px + 6px);
   }
   .bubble { font-size: 13px; }
 

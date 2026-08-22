@@ -12,6 +12,7 @@
  * 用法: node scripts/build-texture-atlas.mjs
  */
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 import { execFileSync } from 'child_process'
@@ -23,6 +24,22 @@ const CACHE_DIR = path.resolve('scripts/texture-cache')
 const UA = 'Mozilla/5.0 (MyWorld texture sync; educational fan project)'
 const ATLAS_SIZE = 16
 const TILE = 32
+
+// Mojang 客户端 JAR 内的原版资源。这里按图集索引覆盖容易被 Wiki 物品图误判的红石方块。
+const MOJANG_ATLAS_TEXTURES = {
+  66: 'piston_bottom',
+  197: 'piston_top',
+  198: 'piston_side',
+  199: 'piston_top_sticky',
+  200: 'repeater',
+  201: 'comparator',
+  202: 'observer_side',
+  203: 'hopper_outside',
+  204: 'redstone_torch_off',
+  205: 'redstone_torch',
+  206: 'lever',
+  207: 'lever',
+}
 
 // ──────────────────────────────────────────────────────────────
 // PNG 编解码 (零依赖, 使用 Node 内置 zlib)
@@ -54,6 +71,7 @@ function decodePNG(buf) {
   if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not png')
   let pos = 8, width = 0, height = 0, bitDepth = 0, colorType = 0
   let plte = Buffer.alloc(0)
+  let trns = Buffer.alloc(0)
   const idat = []
   while (pos < buf.length) {
     const len = buf.readUInt32BE(pos)
@@ -64,6 +82,7 @@ function decodePNG(buf) {
       bitDepth = data[8]; colorType = data[9]
     } else if (type === 'IDAT') idat.push(data)
     else if (type === 'PLTE') plte = data
+    else if (type === 'tRNS') trns = data
     else if (type === 'IEND') break
     pos += 12 + len
   }
@@ -134,7 +153,7 @@ function decodePNG(buf) {
     } else if (colorType === 3) {
       if (v * 3 + 2 >= plte.length) throw new Error('palette out of range')
       rgba[i * 4] = plte[v * 3]; rgba[i * 4 + 1] = plte[v * 3 + 1]; rgba[i * 4 + 2] = plte[v * 3 + 2]
-      rgba[i * 4 + 3] = 255
+      rgba[i * 4 + 3] = v < trns.length ? trns[v] : 255
     }
   }
   return { width, height, data: rgba }
@@ -307,7 +326,8 @@ function autoTitleFor(name) {
   const id = name.toLowerCase()
   if (METAL_TITLES[id]) return METAL_TITLES[id]
   if (id.endsWith('_concrete')) return titleCase(id) + ' (texture)'
-  return titleCase(id)
+  // 添加 (texture) 后缀以获取平面贴图而非 3D 等距渲染的物品图标
+  return titleCase(id) + ' (texture)'
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -330,6 +350,52 @@ async function curlToFile(url, dest) {
     fs.unlinkSync(dest)
     return false
   } catch { return false }
+}
+
+async function curlDownload(url, dest) {
+  try {
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    execFileSync('curl', ['-sL', '--fail', '--retry', '2', '--max-time', '300', '-A', UA, url, '-o', dest], { stdio: 'ignore' })
+    return fs.existsSync(dest) && fs.statSync(dest).size > 1024
+  } catch {
+    if (fs.existsSync(dest)) fs.unlinkSync(dest)
+    return false
+  }
+}
+
+async function getMojangBlockTextureDir() {
+  const manifestRaw = await curlToString('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json')
+  if (!manifestRaw) throw new Error('无法读取 Mojang 版本清单')
+  const manifest = JSON.parse(manifestRaw)
+  const releaseId = manifest.latest?.release
+  const versionEntry = manifest.versions?.find(version => version.id === releaseId)
+  if (!releaseId || !versionEntry?.url) throw new Error('Mojang 版本清单缺少最新正式版')
+
+  const versionRaw = await curlToString(versionEntry.url)
+  if (!versionRaw) throw new Error(`无法读取 Minecraft ${releaseId} 版本信息`)
+  const clientUrl = JSON.parse(versionRaw).downloads?.client?.url
+  if (!clientUrl) throw new Error(`Minecraft ${releaseId} 版本信息缺少客户端地址`)
+
+  const cacheRoot = path.join(os.tmpdir(), 'my-world-mojang-textures', releaseId)
+  const blockDir = path.join(cacheRoot, 'assets', 'minecraft', 'textures', 'block')
+  const expected = [...new Set(Object.values(MOJANG_ATLAS_TEXTURES))]
+    .map(name => path.join(blockDir, `${name}.png`))
+  if (expected.every(file => fs.existsSync(file))) return { blockDir, releaseId }
+
+  const clientJar = path.join(cacheRoot, `minecraft-${releaseId}-client.jar`)
+  if (!fs.existsSync(clientJar) && !(await curlDownload(clientUrl, clientJar))) {
+    throw new Error(`Minecraft ${releaseId} 客户端资源下载失败`)
+  }
+  fs.mkdirSync(cacheRoot, { recursive: true })
+  execFileSync('tar', [
+    '-xf', clientJar,
+    '-C', cacheRoot,
+    'assets/minecraft/textures/block',
+  ], { stdio: 'ignore' })
+
+  const missing = expected.filter(file => !fs.existsSync(file))
+  if (missing.length) throw new Error(`客户端资源缺少贴图: ${missing.map(file => path.basename(file)).join(', ')}`)
+  return { blockDir, releaseId }
 }
 
 // 按标题查找最新贴图文件 (空格→下划线匹配); prefix 可覆盖 API 查找前缀 (处理 Bedrock 这类前缀污染)
@@ -391,6 +457,26 @@ function upscaleNearest(src, sw, sh, dstSize) {
   return dst
 }
 
+function writeAtlasTile(atlas, index, rgba) {
+  const col = index % ATLAS_SIZE
+  const row = Math.floor(index / ATLAS_SIZE)
+  for (let y = 0; y < TILE; y++) {
+    rgba.copy(atlas, ((row * TILE + y) * ATLAS_SIZE + col) * TILE * 4, y * TILE * 4, (y + 1) * TILE * 4)
+  }
+}
+
+async function applyMojangAtlasTextures(atlas) {
+  const { blockDir, releaseId } = await getMojangBlockTextureDir()
+  for (const [indexText, textureName] of Object.entries(MOJANG_ATLAS_TEXTURES)) {
+    const file = path.join(blockDir, `${textureName}.png`)
+    const { width, height, data } = decodePNG(fs.readFileSync(file))
+    const rgba = width === TILE && height === TILE ? data : upscaleNearest(data, width, height, TILE)
+    writeAtlasTile(atlas, Number(indexText), rgba)
+  }
+  console.log(`已从 Minecraft ${releaseId} 客户端资源覆盖 ${Object.keys(MOJANG_ATLAS_TEXTURES).length} 个图集索引`)
+  return Object.keys(MOJANG_ATLAS_TEXTURES).map(Number)
+}
+
 function tintRGBA(data, hex) {
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
   for (let i = 0; i < data.length; i += 4) {
@@ -414,14 +500,24 @@ async function main() {
   fs.mkdirSync(CACHE_DIR, { recursive: true })
   fs.mkdirSync(path.dirname(OUT_PNG), { recursive: true })
   const entries = parseBlockRegistry()
+  const patchOnly = process.argv.includes('--mojang-patch')
   console.log(`解析到 ${entries.length} 个方块`)
 
-  const atlas = Buffer.alloc(ATLAS_SIZE * ATLAS_SIZE * TILE * TILE * 4) // 透明底
+  let atlas
+  if (patchOnly) {
+    const current = decodePNG(fs.readFileSync(OUT_PNG))
+    if (current.width !== ATLAS_SIZE * TILE || current.height !== ATLAS_SIZE * TILE) {
+      throw new Error(`现有图集尺寸错误: ${current.width}x${current.height}`)
+    }
+    atlas = current.data
+  } else {
+    atlas = Buffer.alloc(ATLAS_SIZE * ATLAS_SIZE * TILE * TILE * 4) // 透明底
+  }
   const coveredIndices = new Map() // atlas index → block name
   let okBlocks = 0, failBlocks = []
   const failList = []
 
-  for (const { name, faces } of entries) {
+  for (const { name, faces } of patchOnly ? [] : entries) {
     if (!faces) continue
     const mapped = NAME_MAP[name]
     if (mapped === null) continue
@@ -475,16 +571,16 @@ async function main() {
         const { width, height, data } = decodePNG(fs.readFileSync(file))
         let rgba = (width === TILE && height === TILE) ? data : upscaleNearest(data, width, height, TILE)
         if (tint && avgSaturation(rgba) < 0.15) tintRGBA(rgba, tint)
-        const col = idx % ATLAS_SIZE, row = Math.floor(idx / ATLAS_SIZE)
-        for (let y = 0; y < TILE; y++) {
-          rgba.copy(atlas, ((row * TILE + y) * ATLAS_SIZE + col) * TILE * 4, y * TILE * 4, (y + 1) * TILE * 4)
-        }
+        writeAtlasTile(atlas, idx, rgba)
         coveredIndices.set(idx, name)
       } catch (e) { blockOk = false }
     }
     if (blockOk) okBlocks++
     else { failBlocks.push(name); failList.push(name) }
   }
+
+  const mojangIndices = await applyMojangAtlasTextures(atlas)
+  for (const index of mojangIndices) coveredIndices.set(index, 'Mojang client resource')
 
   fs.writeFileSync(OUT_PNG, encodePNG(ATLAS_SIZE * TILE, ATLAS_SIZE * TILE, atlas))
   const textured = [...coveredIndices.keys()].length

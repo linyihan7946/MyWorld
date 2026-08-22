@@ -60,11 +60,11 @@ void main() {
   float faceShade = 1.0;
   float ay = abs(N.y);
   if (ay > 0.5) {
-    faceShade = N.y > 0.0 ? 1.0 : 0.52;
+    faceShade = N.y > 0.0 ? 1.0 : 0.62;
   } else if (abs(N.x) > 0.5) {
-    faceShade = 0.82;
+    faceShade = 0.86;
   } else {
-    faceShade = 0.72;
+    faceShade = 0.78;
   }
 
   // 局部点光源
@@ -81,8 +81,8 @@ void main() {
     localLight += pointLightColors[i] * attenuation * 3.5;
   }
 
-  // 合成
-  float aoFactor = mix(0.45, 1.0, vAO);
+  // 合成 — AO 最小值从 0.45 提升到 0.58，让暗面仍然可见
+  float aoFactor = mix(0.58, 1.0, vAO);
   vec3 sunLighting = (ambient + diffuse + skyLight) * faceShade * aoFactor + specular;
   vec3 finalColor = color * (sunLighting + localLight);
 

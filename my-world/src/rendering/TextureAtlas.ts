@@ -1,11 +1,17 @@
 import * as THREE from 'three'
 import { ATLAS_SIZE, TEXTURE_RESOLUTION } from '@/utils/constants'
-import { BlockType, BLOCK_REGISTRY } from '@/types/blocks'
+import blockAtlasUrl from '@/assets/textures/block-atlas.png'
+
+// 这些槽位由烘焙脚本直接从 Mojang 客户端资源写入；透明火把/拉杆也应保留，
+// 不再交给针对 Wiki 3D 缩略图的启发式检测。
+const TRUSTED_MOJANG_ATLAS_INDICES = new Set([
+  66, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207,
+])
 
 /**
  * TextureAtlas - 纹理图集
  * 将所有方块纹理打包到一张大纹理中（32×32 像素/格）
- * 使用程序生成的 2D 平面贴图（官方图集包含 3D 等距渲染图，不适合映射到方块面）
+ * 优先使用官方 Minecraft 平面贴图，自动检测并替换 3D 等距渲染图为程序纹理
  */
 export class TextureAtlas {
   public texture: THREE.Texture
@@ -18,13 +24,14 @@ export class TextureAtlas {
     canvas.height = ATLAS_SIZE * TEXTURE_RESOLUTION
     const ctx = canvas.getContext('2d')!
 
-    // 生成程序纹理作为唯一材质来源（所有方块使用统一的 2D 平面贴图）
+    // 先生成程序纹理作为后备（3D 纹理会被替换为这些）
     this.generateTextures(ctx)
 
-    document.documentElement.style.setProperty(
-      '--block-texture-atlas',
-      `url("${canvas.toDataURL('image/png')}")`,
-    )
+    // 保存程序纹理的副本，用于替换 3D 纹理
+    const proceduralBackup = document.createElement('canvas')
+    proceduralBackup.width = canvas.width
+    proceduralBackup.height = canvas.height
+    proceduralBackup.getContext('2d')!.drawImage(canvas, 0, 0)
 
     this.texture = new THREE.CanvasTexture(canvas)
     this.texture.magFilter = THREE.NearestFilter
@@ -32,16 +39,68 @@ export class TextureAtlas {
     this.texture.colorSpace = THREE.SRGBColorSpace
     this.texture.needsUpdate = true
 
-    // 所有材质使用程序生成的 2D 平面贴图，不使用官方图集
-    // （官方图集中包含一些 3D 等距渲染图，映射到方块面会导致"3D 叠加 3D"的问题）
+    // 异步加载官方 Minecraft 贴图图集，覆盖程序纹理（3D 纹理会被替换）
+    this.loadOfficialAtlas(ctx, canvas, proceduralBackup)
+
+    // 初始设置 CSS 变量（后续会更新）
+    document.documentElement.style.setProperty(
+      '--block-texture-atlas',
+      `url("${canvas.toDataURL('image/png')}")`,
+    )
   }
 
-  /** 加载官方贴图并覆盖到 canvas 上 */
-  private loadOfficialAtlas(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
+  /** 加载官方贴图并覆盖到 canvas 上，自动检测并替换 3D 等距渲染图 */
+  private loadOfficialAtlas(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    proceduralBackup: HTMLCanvasElement,
+  ): void {
     const img = new Image()
     img.onload = () => {
-      // 将官方贴图绘制到 canvas 上，覆盖对应的程序纹理
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      // 将官方贴图绘制到临时 canvas 上进行分析
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = canvas.width
+      tempCanvas.height = canvas.height
+      const tempCtx = tempCanvas.getContext('2d')!
+      tempCtx.drawImage(img, 0, 0)
+
+      // 遍历每个纹理槽位，只用真正的 2D 贴图覆盖程序纹理。
+      let fixedCount = 0
+      for (let idx = 0; idx < ATLAS_SIZE * ATLAS_SIZE; idx++) {
+        const col = idx % ATLAS_SIZE
+        const row = Math.floor(idx / ATLAS_SIZE)
+        const x = col * this.texResolution
+        const y = row * this.texResolution
+
+        const tileKind = TRUSTED_MOJANG_ATLAS_INDICES.has(idx)
+          ? 'flat'
+          : this.classifyAtlasTile(tempCtx, x, y, this.texResolution)
+        if (tileKind === 'empty') {
+          // 图集中没有该方块时保留已生成的 2D 后备纹理。
+          continue
+        }
+
+        if (tileKind === 'isometric') {
+          // 从程序纹理备份中恢复该槽位
+          ctx.drawImage(
+            proceduralBackup,
+            x, y, this.texResolution, this.texResolution,
+            x, y, this.texResolution, this.texResolution,
+          )
+          fixedCount++
+        } else {
+          // 绘制官方平面贴图
+          ctx.drawImage(
+            tempCanvas,
+            x, y, this.texResolution, this.texResolution,
+            x, y, this.texResolution, this.texResolution,
+          )
+        }
+      }
+
+      if (fixedCount > 0) {
+        console.log(`[TextureAtlas] 检测到 ${fixedCount} 个 3D 等距渲染图，已替换为程序纹理`)
+      }
 
       // 更新 THREE 纹理
       this.texture.needsUpdate = true
@@ -53,6 +112,59 @@ export class TextureAtlas {
       )
     }
     img.src = blockAtlasUrl
+  }
+
+  /**
+   * 区分空槽、平面贴图和 Wiki 的 3D 等距预览图。
+   *
+   * 亮度梯度并不能可靠区分两者；天然带明暗变化的石材会被误判。等距方块
+   * 预览的稳定特征是有效内容在上、左、右三条边都有留白，而游戏中的方块
+   * 面贴图会铺满整格。旧版烘焙器还可能把透明区解码成纯黑色，所以这里将
+   * 透明像素和纯黑像素都视作预览图背景。
+   */
+  private classifyAtlasTile(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+  ): 'empty' | 'flat' | 'isometric' {
+    const data = ctx.getImageData(x, y, size, size).data
+    let visiblePixels = 0
+    let contentPixels = 0
+    let minX = size
+    let minY = size
+    let maxX = -1
+    let maxY = -1
+
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const offset = (py * size + px) * 4
+        const alpha = data[offset + 3]
+        if (alpha <= 16) continue
+
+        visiblePixels++
+        const isLegacyBlackBackground =
+          data[offset] <= 2 && data[offset + 1] <= 2 && data[offset + 2] <= 2
+        if (isLegacyBlackBackground) continue
+
+        contentPixels++
+        minX = Math.min(minX, px)
+        minY = Math.min(minY, py)
+        maxX = Math.max(maxX, px)
+        maxY = Math.max(maxY, py)
+      }
+    }
+
+    if (visiblePixels === 0) return 'empty'
+
+    // 纯黑也可能是合法的平面纹理，不能把它当成空槽或 3D 图。
+    if (contentPixels === 0) return 'flat'
+
+    const insetEdges = [minX > 0, minY > 0, maxX < size - 1, maxY < size - 1]
+      .filter(Boolean).length
+    const hasIsometricShoulders = minX > 0 && minY > 0 && maxX < size - 1
+
+    return hasIsometricShoulders && insetEdges >= 3 ? 'isometric' : 'flat'
   }
 
   getUV(texIndex: number): { u: number; v: number; uSize: number; vSize: number } {
@@ -480,6 +592,25 @@ export class TextureAtlas {
       }
     })
 
+    // ── 43-49: 门（透明窗格 + 独立门板纹理）──
+    const doorColors = [
+      ['#9b6a32', '#6f431d'], ['#6f4827', '#422913'], ['#d8c58a', '#9f874f'],
+      ['#a87343', '#714423'], ['#b86732', '#753417'], ['#49311f', '#281a11'], ['#b8bec3', '#747b81'],
+    ] as const
+    doorColors.forEach(([base, dark], variant) => {
+      draw(43 + variant, (x, y, s) => {
+        ctx.clearRect(x, y, s, s)
+        F(ctx, x, y, s, 4, dark)
+        F(ctx, x, y + s - 4, s, 4, dark)
+        F(ctx, x, y, 4, s, dark)
+        F(ctx, x + s - 4, y, 4, s, dark)
+        F(ctx, x + 4, y + 4, s - 8, 8, base)
+        F(ctx, x + 4, y + 16, s - 8, s - 20, base)
+        F(ctx, x + Math.floor(s * 0.72), y + Math.floor(s * 0.57), 2, 2, variant === 6 ? '#303438' : '#d7b85b')
+        for (let py = y + 18; py < y + s - 4; py += 4) F(ctx, x + 5, py, s - 10, 1, dark)
+      })
+    })
+
     // ── 50-52: 末地 ──
     draw(50, (x, y, s) => { F(ctx, x, y, s, s, '#d8d8a0'); NF(ctx, x, y, s, s, 216, 216, 160, 30, 1, 50) })
     draw(51, (x, y, s) => {
@@ -490,6 +621,21 @@ export class TextureAtlas {
       }
     })
     draw(52, (x, y, s) => { F(ctx, x, y, s, s, '#a070b0'); NF(ctx, x, y, s, s, 160, 112, 176, 30, 1, 52) })
+
+    // ── 53-59: 活板门 ──
+    doorColors.forEach(([base, dark], variant) => {
+      draw(53 + variant, (x, y, s) => {
+        ctx.clearRect(x, y, s, s)
+        F(ctx, x, y, s, 5, dark)
+        F(ctx, x, y + s - 5, s, 5, dark)
+        F(ctx, x, y, 5, s, dark)
+        F(ctx, x + s - 5, y, 5, s, dark)
+        F(ctx, x + 5, y + 5, s - 10, 4, base)
+        F(ctx, x + 5, y + s - 9, s - 10, 4, base)
+        F(ctx, x + 5, y + 9, 4, s - 18, base)
+        F(ctx, x + s - 9, y + 9, 4, s - 18, base)
+      })
+    })
 
     // ── 60-64: 建筑方块 ──
     draw(60, (x, y, s) => {
@@ -535,6 +681,19 @@ export class TextureAtlas {
       ctx.strokeStyle = 'rgba(180,200,240,0.5)'; ctx.lineWidth = 1
       ctx.strokeRect(x + 1, y + 1, s - 2, s - 2)
       F(ctx, x + 2, y + 2, 4, 2, 'rgba(220,240,255,0.4)')
+    })
+
+    // ── 65: 梯子 ──
+    draw(65, (x, y, s) => {
+      ctx.clearRect(x, y, s, s)
+      F(ctx, x + 5, y, 4, s, '#8b5a2b')
+      F(ctx, x + s - 9, y, 4, s, '#8b5a2b')
+      F(ctx, x + 6, y, 1, s, '#bd8645')
+      F(ctx, x + s - 8, y, 1, s, '#bd8645')
+      for (let py = 3; py < s; py += 7) {
+        F(ctx, x + 7, y + py, s - 14, 3, '#8b5a2b')
+        F(ctx, x + 8, y + py, s - 16, 1, '#bd8645')
+      }
     })
 
     // ── 70-73: 矿物块 ──

@@ -7,6 +7,7 @@ import { calculateHitsNeeded, canHarvestDrop, shouldConsumeDurability, getMining
 import { getItemDefinition } from '@/types/items'
 import { useInventoryStore } from '@/ui/stores/inventoryStore'
 import { getEnchantLevel } from './EnchantmentSystem'
+import { getBlockState, removeBlockState, setBlockState, type Facing } from './BlockStateSystem'
 
 /**
  * BlockInteraction - 方块交互系统
@@ -124,7 +125,7 @@ export class BlockInteraction {
 
     // 遗留下来的瞬间破坏模式
     if (instant && !creativeBoost) {
-      this.chunkManager.setBlock(this.targetBlock.x, this.targetBlock.y, this.targetBlock.z, BlockType.AIR)
+      this.removeBlockAndLinkedHalf(this.targetBlock, blockType as BlockType)
       this.eventBus.emit('block:broke', {
         position: this.targetBlock.clone(),
         blockType: blockType,
@@ -153,7 +154,7 @@ export class BlockInteraction {
         this.consumeToolDurability()
       }
 
-      this.chunkManager.setBlock(this.targetBlock.x, this.targetBlock.y, this.targetBlock.z, BlockType.AIR)
+      this.removeBlockAndLinkedHalf(this.targetBlock, blockType as BlockType)
       this.eventBus.emit('block:broke', {
         position: this.targetBlock.clone(),
         blockType: blockType,
@@ -207,6 +208,16 @@ export class BlockInteraction {
     const existingBlock = this.chunkManager.getBlock(placePos.x, placePos.y, placePos.z)
     if (existingBlock !== BlockType.AIR && existingBlock !== BlockType.WATER) return false
 
+    const isDoor = selectedBlockType >= BlockType.OAK_DOOR && selectedBlockType <= BlockType.IRON_DOOR
+    const isTrapdoor = selectedBlockType >= BlockType.OAK_TRAPDOOR && selectedBlockType <= BlockType.IRON_TRAPDOOR
+
+    // 梯子只能贴在方块侧面；门还需要上方一格空间。
+    if (selectedBlockType === BlockType.LADDER && this.targetNormal.y !== 0) return false
+    if (isDoor) {
+      const above = this.chunkManager.getBlock(placePos.x, placePos.y + 1, placePos.z)
+      if (above !== BlockType.AIR && above !== BlockType.WATER) return false
+    }
+
     // Check: must be adjacent to existing solid block
     if (!this.hasAdjacentSolid(placePos)) return false
 
@@ -227,7 +238,7 @@ export class BlockInteraction {
     const blockMinX = placePos.x
     const blockMaxX = placePos.x + 1
     const blockMinY = placePos.y
-    const blockMaxY = placePos.y + 1
+    const blockMaxY = placePos.y + (isDoor ? 2 : 1)
     const blockMinZ = placePos.z
     const blockMaxZ = placePos.z + 1
 
@@ -239,7 +250,25 @@ export class BlockInteraction {
       return false
     }
 
-    this.chunkManager.setBlock(placePos.x, placePos.y, placePos.z, selectedBlockType)
+    const cameraFacing = this.toFacing(this.getHorizontalFacing())
+    if (isDoor) {
+      setBlockState(placePos.x, placePos.y, placePos.z, { facing: cameraFacing, half: 'bottom', open: false })
+      setBlockState(placePos.x, placePos.y + 1, placePos.z, { facing: cameraFacing, half: 'top', open: false })
+      this.chunkManager.setBlock(placePos.x, placePos.y, placePos.z, selectedBlockType)
+      this.chunkManager.setBlock(placePos.x, placePos.y + 1, placePos.z, selectedBlockType)
+    } else {
+      if (selectedBlockType === BlockType.LADDER) {
+        setBlockState(placePos.x, placePos.y, placePos.z, { facing: this.toFacing(this.targetNormal) })
+      } else if (isTrapdoor) {
+        const facing = this.targetNormal.y === 0 ? this.toFacing(this.targetNormal) : cameraFacing
+        setBlockState(placePos.x, placePos.y, placePos.z, {
+          facing,
+          half: this.targetNormal.y < 0 ? 'top' : 'bottom',
+          open: false,
+        })
+      }
+      this.chunkManager.setBlock(placePos.x, placePos.y, placePos.z, selectedBlockType)
+    }
     this.eventBus.emit('block:placed', {
       position: placePos.clone(),
       blockType: selectedBlockType,
@@ -260,6 +289,30 @@ export class BlockInteraction {
       return new THREE.Vector3(this.cameraDirection.x > 0 ? 1 : -1, 0, 0)
     }
     return new THREE.Vector3(0, 0, this.cameraDirection.z > 0 ? 1 : -1)
+  }
+
+  private toFacing(direction: THREE.Vector3): Facing {
+    if (Math.abs(direction.x) > Math.abs(direction.z)) return direction.x > 0 ? 2 : 3
+    return direction.z > 0 ? 1 : 0
+  }
+
+  private removeBlockAndLinkedHalf(position: THREE.Vector3, blockType: BlockType): void {
+    const x = Math.floor(position.x)
+    const y = Math.floor(position.y)
+    const z = Math.floor(position.z)
+    const isDoor = blockType >= BlockType.OAK_DOOR && blockType <= BlockType.IRON_DOOR
+
+    if (isDoor) {
+      const half = getBlockState(x, y, z).half
+      const linkedY = half === 'top' ? y - 1 : y + 1
+      if (this.chunkManager.getBlock(x, linkedY, z) === blockType) {
+        removeBlockState(x, linkedY, z)
+        this.chunkManager.setBlock(x, linkedY, z, BlockType.AIR)
+      }
+    }
+
+    removeBlockState(x, y, z)
+    this.chunkManager.setBlock(x, y, z, BlockType.AIR)
   }
 
   /**

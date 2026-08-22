@@ -1323,6 +1323,12 @@ export class Engine {
       }
       const isOpen = getBlockStateValue(position.x, position.y, position.z, 'open', false) as boolean
       setBlockState(position.x, position.y, position.z, { open: !isOpen })
+      const half = getBlockStateValue(position.x, position.y, position.z, 'half', undefined)
+      const linkedY = half === 'top' ? position.y - 1 : half === 'bottom' ? position.y + 1 : null
+      if (linkedY !== null && this.chunkManager.getBlock(position.x, linkedY, position.z) === blockType) {
+        setBlockState(position.x, linkedY, position.z, { open: !isOpen })
+        this.chunkManager.markBlockDirty(position.x, linkedY, position.z)
+      }
       pStore.breakToolName = isOpen ? '门: 已关闭' : '门: 已打开'
       setTimeout(() => { pStore.breakToolName = null }, 1500)
       this.chunkManager.markBlockDirty(position.x, position.y, position.z)
